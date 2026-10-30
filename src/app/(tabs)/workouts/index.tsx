@@ -27,6 +27,8 @@ export default function HomeScreen() {
     <View style={styles.screen}>
       <PageHeader title="Workouts" />
       <ScrollView contentContainerStyle={styles.content}>
+        {/* The week sits above the days so it is the first thing seen. */}
+        {data && data.workouts.length > 0 ? <WeekStrip workouts={data.workouts} /> : null}
         {days?.map((day) => {
           const active = day.inProgressSince !== null;
           return (
@@ -44,7 +46,6 @@ export default function HomeScreen() {
           );
         })}
         <Button label="New day" icon="add" variant="primary" onPress={() => router.push('/name-day')} />
-        {data && data.workouts.length > 0 ? <WeekStrip workouts={data.workouts} /> : null}
         {days ? <GettingStarted days={days} /> : null}
         {days && days.length === 0 ? (
           <Text style={styles.small}>Common splits: Push day, Pull day, Leg day, Upper, Lower, Full body.</Text>

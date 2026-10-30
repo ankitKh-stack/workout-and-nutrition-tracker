@@ -75,7 +75,7 @@ These terms are used throughout the spec. They are defined for a reader who has 
 - Tap a day row → opens Day detail (3.3) for that day.
 - Tap "+ New day" → opens Name Your Day (3.2) in create mode.
 
-**This week:** under the list, once any workout is completed, a card "This week" shows Monday to Sunday as seven squares in the calendar's shades, with "2 workouts · last 28 Oct" beside the heading. Tapping it opens the Calendar.
+**This week:** at the top of the screen, above the list of days, once any workout is completed, a card "This week" shows Monday to Sunday as seven squares in the calendar's shades, with "2 workouts · last 28 Oct" beside the heading. Tapping it opens the Calendar.
 
 **Empty state:** Until the first workout is finished, a "Getting started" card lists four steps (name a day, add exercises, start a workout and log sets, finish it), each ticked from the real data, with "1 of 4 done". Under it: "Common splits: Push day, Pull day, Leg day, Upper, Lower, Full body."
 
