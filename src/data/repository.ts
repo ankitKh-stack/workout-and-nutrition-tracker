@@ -28,20 +28,22 @@ export type DaySummary = {
   name: string;
   exerciseCount: number;
   lastWorkoutDate: string | null;
-  inProgress: boolean;
+  /** Start time of the day's in-progress workout, or null when none is running. */
+  inProgressSince: string | null;
 };
 
+/** Days with a workout in progress come first, then the rest in creation order. */
 export async function listDays(db: SQLiteDatabase): Promise<DaySummary[]> {
-  const rows = await db.getAllAsync<Omit<DaySummary, 'inProgress'> & { inProgress: number }>(
+  return db.getAllAsync<DaySummary>(
     `SELECT d.id, d.name,
        (SELECT COUNT(*) FROM exercise e WHERE e.day_id = d.id) AS exerciseCount,
        (SELECT w.date FROM workout w WHERE w.day_id = d.id AND w.status = 'completed'
           ORDER BY w.started_at DESC LIMIT 1) AS lastWorkoutDate,
-       EXISTS (SELECT 1 FROM workout w WHERE w.day_id = d.id AND w.status = 'in_progress') AS inProgress
+       (SELECT w.started_at FROM workout w WHERE w.day_id = d.id AND w.status = 'in_progress'
+          LIMIT 1) AS inProgressSince
      FROM day_basket d
-     ORDER BY d.created_at ASC`,
+     ORDER BY (inProgressSince IS NULL) ASC, d.created_at ASC`,
   );
-  return rows.map((r) => ({ ...r, inProgress: r.inProgress === 1 }));
 }
 
 export async function getDayName(db: SQLiteDatabase, dayId: string): Promise<string | null> {
@@ -220,6 +222,37 @@ export async function addExercise(db: SQLiteDatabase, dayId: string, name: strin
     );
   });
   return exerciseId;
+}
+
+export async function getExerciseDeletionCounts(
+  db: SQLiteDatabase,
+  exerciseId: string,
+): Promise<{ variations: number; loggedSets: number }> {
+  const row = await db.getFirstAsync<{ variations: number; loggedSets: number }>(
+    `SELECT
+       (SELECT COUNT(*) FROM variation WHERE exercise_id = ?) AS variations,
+       (SELECT COUNT(*) FROM workout_set s JOIN variation v ON v.id = s.variation_id
+        WHERE v.exercise_id = ? AND s.intensifier_id IS NULL) AS loggedSets`,
+    exerciseId, exerciseId,
+  );
+  return row ?? { variations: 0, loggedSets: 0 };
+}
+
+/**
+ * Deletes an exercise, its variations and every set logged on it, including
+ * intensifier rows attached to those sets and superset rows that paired with
+ * it. Volumes of past workouts are computed on read, so the calendar updates.
+ */
+export async function deleteExercise(db: SQLiteDatabase, exerciseId: string): Promise<void> {
+  const exerciseSets = `SELECT s.id FROM workout_set s JOIN variation v ON v.id = s.variation_id WHERE v.exercise_id = ?`;
+  const doomedIntensifiers = `SELECT id FROM intensifier WHERE parent_set_id IN (${exerciseSets}) OR partner_exercise_id = ?`;
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(`DELETE FROM workout_set WHERE intensifier_id IN (${doomedIntensifiers})`, exerciseId, exerciseId);
+    await db.runAsync(`DELETE FROM intensifier WHERE id IN (${doomedIntensifiers})`, exerciseId, exerciseId);
+    await db.runAsync('DELETE FROM workout_set WHERE variation_id IN (SELECT id FROM variation WHERE exercise_id = ?)', exerciseId);
+    await db.runAsync('DELETE FROM variation WHERE exercise_id = ?', exerciseId);
+    await db.runAsync('DELETE FROM exercise WHERE id = ?', exerciseId);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -761,4 +794,29 @@ export async function getCalendarWorkouts(db: SQLiteDatabase): Promise<CalendarW
     volume: w.volume,
     progress: progress.get(w.id)!,
   }));
+}
+
+// ---------------------------------------------------------------------------
+// Settings
+
+export type WeightUnit = 'kg' | 'lb';
+
+export type StoredSettings = { theme: 'light' | 'dark' | null; unit: WeightUnit | null };
+
+export async function getSettings(db: SQLiteDatabase): Promise<StoredSettings> {
+  const rows = await db.getAllAsync<{ key: string; value: string }>('SELECT key, value FROM settings');
+  const map = new Map(rows.map((r) => [r.key, r.value]));
+  const theme = map.get('theme');
+  const unit = map.get('unit');
+  return {
+    theme: theme === 'light' || theme === 'dark' ? theme : null,
+    unit: unit === 'kg' || unit === 'lb' ? unit : null,
+  };
+}
+
+export async function saveSetting(db: SQLiteDatabase, key: 'theme' | 'unit', value: string): Promise<void> {
+  await db.runAsync(
+    'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+    key, value,
+  );
 }

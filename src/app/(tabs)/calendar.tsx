@@ -2,34 +2,26 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useMemo, useRef, useState, type ComponentRef } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
-import { colors, ErrorView, styles } from '@/components/ui';
+import { ErrorView, LargeHeader } from '@/components/ui';
 import { getCalendarWorkouts, type CalendarWorkout } from '@/data/repository';
 import { darkerLevel, type ShadeLevel } from '@/domain/progress';
 import {
   formatDateLong,
   formatDateShort,
-  formatNumber,
   formatPercent,
+  formatWeight,
   localDateString,
   monthShort,
   parseLocalDate,
 } from '@/lib/format';
 import { useFocusData } from '@/lib/useFocusData';
+import { useSettings, useTheme } from '@/theme/settings';
 
 const VISIBLE_WEEKS = 20;
 const CELL = 14;
 const GAP = 3;
 const WEEKDAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
-// One progress colour in five steps plus a neutral "no workout" colour (SPEC.md 7).
-const SHADES: Record<string, string> = {
-  none: '#e5e7eb',
-  zero: '#d9f2df',
-  '1': '#9be9a8',
-  '2': '#40c463',
-  '3': '#30a14e',
-  '4': '#1a5e30',
-};
 const LEGEND: ShadeLevel[] = ['none', 'zero', 1, 2, 3, 4];
 
 const levelName = (l: ShadeLevel) => (l === 'zero' ? 'Zero volume' : l === 'none' ? 'No workout' : `Level ${l}`);
@@ -63,6 +55,10 @@ function changeText(w: CalendarWorkout): string {
 // Calendar (SPEC.md 3.8): GitHub-style grid, newest week on the right.
 export default function CalendarScreen() {
   const db = useSQLiteContext();
+  const { styles, colors } = useTheme();
+  const { unit } = useSettings();
+  // One progress colour in five steps plus a neutral "no workout" colour (SPEC.md 7).
+  const shade = (l: ShadeLevel) => colors.shades[l];
   const { data: workouts, error, reload } = useFocusData(() => getCalendarWorkouts(db), [db]);
   const [selected, setSelected] = useState<string | null>(null);
   const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
@@ -98,96 +94,99 @@ export default function CalendarScreen() {
     : [];
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <View style={{ flexDirection: 'row' }}>
-        <View style={{ marginTop: 16, marginRight: 4 }}>
-          {WEEKDAYS.map((d, i) => (
-            <Text key={i} style={{ height: CELL, marginBottom: GAP, fontSize: 10, lineHeight: CELL, color: colors.muted }}>
-              {d}
-            </Text>
-          ))}
-        </View>
-        <ScrollView
-          horizontal
-          ref={scrollRef}
-          onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}
-          showsHorizontalScrollIndicator={false}
-        >
-          {weeks.map((monday, col) => {
-            const prev = weeks[col - 1];
-            const showMonth = col === 0 || prev.getMonth() !== monday.getMonth();
-            return (
-              <View key={monday.toISOString()} style={{ width: CELL + GAP }}>
-                <View style={{ height: 16 }}>
-                  {showMonth ? (
-                    // Absolutely positioned so the label can overflow its narrow week column.
-                    <Text style={{ position: 'absolute', left: 0, width: 40, fontSize: 10, color: colors.muted }}>
-                      {monthShort(monday.getMonth())}
-                    </Text>
-                  ) : null}
-                </View>
-                {WEEKDAYS.map((_, row) => {
-                  const date = localDateString(addDays(monday, row));
-                  // Dates after today are not drawn.
-                  if (date > today) return <View key={row} style={{ height: CELL, marginBottom: GAP }} />;
-                  const level = levelFor(date);
-                  return (
-                    <Pressable
-                      key={row}
-                      accessibilityRole="button"
-                      accessibilityLabel={`${formatDateLong(date)}, ${levelName(level)}`}
-                      onPress={() => setSelected(date)}
-                      style={{
-                        width: CELL,
-                        height: CELL,
-                        marginBottom: GAP,
-                        borderRadius: 3,
-                        backgroundColor: SHADES[String(level)],
-                        borderWidth: selected === date ? 2 : 0,
-                        borderColor: colors.text,
-                      }}
-                    />
-                  );
-                })}
-              </View>
-            );
-          })}
-        </ScrollView>
-      </View>
-
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
-        <Text style={styles.muted}>Less</Text>
-        {LEGEND.map((l) => (
-          <View
-            key={String(l)}
-            accessibilityLabel={levelName(l)}
-            style={{ width: CELL, height: CELL, borderRadius: 3, backgroundColor: SHADES[String(l)] }}
-          />
-        ))}
-        <Text style={styles.muted}>More</Text>
-      </View>
-
-      <View style={{ borderTopWidth: 1, borderColor: colors.border, paddingTop: 12, marginTop: 8, gap: 10 }}>
-        {workouts && workouts.length === 0 ? (
-          <Text style={styles.muted}>No workouts logged yet. Finish a workout to see it here.</Text>
-        ) : selected === null ? (
-          <Text style={styles.muted}>Tap a square to see that day.</Text>
-        ) : (
-          <>
-            <Text style={styles.title}>{formatDateLong(selected)}</Text>
-            {selectedWorkouts.length === 0 ? <Text style={styles.body}>No workout logged</Text> : null}
-            {selectedWorkouts.map((w) => (
-              <View key={w.id} style={{ gap: 2 }}>
-                <Text style={[styles.body, { fontWeight: '700' }]}>{w.dayName}</Text>
-                <Text style={styles.body}>Volume: {formatNumber(w.volume)}</Text>
-                <Text style={styles.body}>{changeText(w)}</Text>
-                {/* For zero volume the change line already says "Zero volume". */}
-                {w.progress.level !== 'zero' ? <Text style={styles.body}>{levelName(w.progress.level)}</Text> : null}
-              </View>
+    <View style={styles.screen}>
+      <LargeHeader title="Calendar" />
+      <ScrollView contentContainerStyle={styles.content}>
+        <View style={{ flexDirection: 'row' }}>
+          <View style={{ marginTop: 16, marginRight: 4 }}>
+            {WEEKDAYS.map((d, i) => (
+              <Text key={i} style={{ height: CELL, marginBottom: GAP, fontSize: 10, lineHeight: CELL, color: colors.muted }}>
+                {d}
+              </Text>
             ))}
-          </>
-        )}
-      </View>
-    </ScrollView>
+          </View>
+          <ScrollView
+            horizontal
+            ref={scrollRef}
+            onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}
+            showsHorizontalScrollIndicator={false}
+          >
+            {weeks.map((monday, col) => {
+              const prev = weeks[col - 1];
+              const showMonth = col === 0 || prev.getMonth() !== monday.getMonth();
+              return (
+                <View key={monday.toISOString()} style={{ width: CELL + GAP }}>
+                  <View style={{ height: 16 }}>
+                    {showMonth ? (
+                      // Absolutely positioned so the label can overflow its narrow week column.
+                      <Text style={{ position: 'absolute', left: 0, width: 40, fontSize: 10, color: colors.muted }}>
+                        {monthShort(monday.getMonth())}
+                      </Text>
+                    ) : null}
+                  </View>
+                  {WEEKDAYS.map((_, row) => {
+                    const date = localDateString(addDays(monday, row));
+                    // Dates after today are not drawn.
+                    if (date > today) return <View key={row} style={{ height: CELL, marginBottom: GAP }} />;
+                    const level = levelFor(date);
+                    return (
+                      <Pressable
+                        key={row}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${formatDateLong(date)}, ${levelName(level)}`}
+                        onPress={() => setSelected(date)}
+                        style={{
+                          width: CELL,
+                          height: CELL,
+                          marginBottom: GAP,
+                          borderRadius: 3,
+                          backgroundColor: shade(level),
+                          borderWidth: selected === date ? 2 : 0,
+                          borderColor: colors.text,
+                        }}
+                      />
+                    );
+                  })}
+                </View>
+              );
+            })}
+          </ScrollView>
+        </View>
+
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
+          <Text style={styles.muted}>Less</Text>
+          {LEGEND.map((l) => (
+            <View
+              key={String(l)}
+              accessibilityLabel={levelName(l)}
+              style={{ width: CELL, height: CELL, borderRadius: 3, backgroundColor: shade(l) }}
+            />
+          ))}
+          <Text style={styles.muted}>More</Text>
+        </View>
+
+        <View style={{ borderTopWidth: 1, borderColor: colors.border, paddingTop: 12, marginTop: 8, gap: 10 }}>
+          {workouts && workouts.length === 0 ? (
+            <Text style={styles.muted}>No workouts logged yet. Finish a workout to see it here.</Text>
+          ) : selected === null ? (
+            <Text style={styles.muted}>Tap a square to see that day.</Text>
+          ) : (
+            <>
+              <Text style={styles.title}>{formatDateLong(selected)}</Text>
+              {selectedWorkouts.length === 0 ? <Text style={styles.body}>No workout logged</Text> : null}
+              {selectedWorkouts.map((w) => (
+                <View key={w.id} style={{ gap: 2 }}>
+                  <Text style={[styles.body, { fontWeight: '700' }]}>{w.dayName}</Text>
+                  <Text style={styles.body}>Volume: {formatWeight(w.volume, unit)} {unit}</Text>
+                  <Text style={styles.body}>{changeText(w)}</Text>
+                  {/* For zero volume the change line already says "Zero volume". */}
+                  {w.progress.level !== 'zero' ? <Text style={styles.body}>{levelName(w.progress.level)}</Text> : null}
+                </View>
+              ))}
+            </>
+          )}
+        </View>
+      </ScrollView>
+    </View>
   );
 }

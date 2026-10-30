@@ -1,7 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 export const DATABASE_NAME = 'workout-tracker.db';
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 /**
  * Creates the tables on first launch and records the schema version so later
@@ -82,6 +82,15 @@ export async function initializeDatabase(db: SQLiteDatabase): Promise<void> {
         CREATE INDEX idx_set_variation ON workout_set(variation_id);
         CREATE INDEX idx_set_intensifier ON workout_set(intensifier_id);
         CREATE INDEX idx_intensifier_parent ON intensifier(parent_set_id);
+      `);
+    }
+    if (version.user_version < 2) {
+      // App preferences (theme, weight unit) as key/value pairs.
+      await db.execAsync(`
+        CREATE TABLE settings (
+          key TEXT PRIMARY KEY NOT NULL,
+          value TEXT NOT NULL
+        );
       `);
     }
     await db.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);

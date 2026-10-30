@@ -3,7 +3,7 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useState } from 'react';
 import { ScrollView } from 'react-native';
 
-import { Button, EmptyText, ErrorView, InlineError, ListRow, styles } from '@/components/ui';
+import { Button, EmptyText, ErrorView, InlineError, ListRow } from '@/components/ui';
 import {
   addIntensifier,
   getIntensifierPickerData,
@@ -12,10 +12,12 @@ import {
 } from '@/data/repository';
 import { useFocusData } from '@/lib/useFocusData';
 import { requestFocus } from '@/lib/writeQueue';
+import { useTheme } from '@/theme/settings';
 
 // Intensifier picker (SPEC.md 3.6): exactly three choices.
 export default function IntensifierScreen() {
   const db = useSQLiteContext();
+  const { styles } = useTheme();
   const { workoutId, setId } = useLocalSearchParams<{ workoutId: string; setId: string }>();
   const { data, error, reload } = useFocusData(
     () => getIntensifierPickerData(db, workoutId, setId),

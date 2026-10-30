@@ -3,26 +3,31 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
-import { Button, colors, EmptyText, ErrorView, InlineError, ListRow, styles } from '@/components/ui';
+import { Button, EmptyText, ErrorView, InlineError, ListRow } from '@/components/ui';
 import {
   countWorkoutSets,
   deleteDay,
+  deleteExercise,
   finishWorkout,
   getDayDeletionCounts,
   getDayDetail,
+  getExerciseDeletionCounts,
   startWorkout,
 } from '@/data/repository';
 import { confirmAsync } from '@/lib/dialogs';
 import { formatDateLong, formatTime, plural } from '@/lib/format';
 import { useFocusData } from '@/lib/useFocusData';
+import { useTheme } from '@/theme/settings';
 
 // Day detail (SPEC.md 3.3): the day's exercises plus start/finish workout,
-// rename and delete.
+// rename, delete, and removing exercises.
 export default function DayDetailScreen() {
   const db = useSQLiteContext();
+  const { styles, colors } = useTheme();
   const { dayId } = useLocalSearchParams<{ dayId: string }>();
   const { data: day, error, reload } = useFocusData(() => getDayDetail(db, dayId), [db, dayId]);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const [banner, setBanner] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -37,7 +42,7 @@ export default function DayDetailScreen() {
   if (day === undefined) return <View style={styles.screen} />;
   if (day === null) {
     return (
-      <View style={[styles.screen, styles.centered]}>
+      <View style={styles.centered}>
         <EmptyText>This day no longer exists.</EmptyText>
       </View>
     );
@@ -67,6 +72,28 @@ export default function DayDetailScreen() {
       openLog(workoutId, exerciseId);
     } catch {
       setActionError('Could not start the workout. Try again.');
+    }
+  }
+
+  async function onRemoveExercise(exerciseId: string, name: string) {
+    const counts = await getExerciseDeletionCounts(db, exerciseId);
+    const history =
+      counts.loggedSets > 0
+        ? ` and ${plural(counts.loggedSets, 'logged set')} (including past workouts, so their volume and calendar shade will change)`
+        : '';
+    const ok = await confirmAsync(
+      `Remove '${name}'?`,
+      `This permanently removes ${plural(counts.variations, 'variation')}${history}. This cannot be undone.`,
+      'Remove',
+      true,
+    );
+    if (!ok) return;
+    setActionError(null);
+    try {
+      await deleteExercise(db, exerciseId);
+      await reload();
+    } catch {
+      setActionError('Could not remove this exercise. Nothing was removed.');
     }
   }
 
@@ -147,6 +174,14 @@ export default function DayDetailScreen() {
               router.push({ pathname: '/name-day', params: { dayId } });
             }}
           />
+          <Button
+            label="Remove exercises"
+            disabled={day.exercises.length === 0}
+            onPress={() => {
+              setMenuOpen(false);
+              setRemoving(true);
+            }}
+          />
           <Button label="Delete day" variant="danger" onPress={onDelete} />
         </View>
       ) : null}
@@ -156,8 +191,14 @@ export default function DayDetailScreen() {
         </View>
       ) : null}
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.muted}>{status}</Text>
+        <Text style={[styles.muted, day.workout && { color: colors.success, fontWeight: '600' }]}>{status}</Text>
         {actionError ? <InlineError>{actionError}</InlineError> : null}
+        {removing ? (
+          <View style={[styles.buttonRow, { alignItems: 'center' }]}>
+            <Text style={[styles.muted, { flex: 1 }]}>Tap Remove next to an exercise to delete it.</Text>
+            <Button label="Done" compact onPress={() => setRemoving(false)} />
+          </View>
+        ) : null}
         {day.exercises.length === 0 ? <EmptyText>No exercises yet. Add your first exercise.</EmptyText> : null}
         {day.exercises.map((e) => {
           const parts: string[] = [];
@@ -168,14 +209,23 @@ export default function DayDetailScreen() {
               key={e.id}
               title={e.name}
               subtitle={parts.join(' · ') || undefined}
-              onPress={() => onExercisePress(e.id)}
+              onPress={removing ? undefined : () => onExercisePress(e.id)}
+              right={
+                removing ? (
+                  <Button label="Remove" variant="danger" compact onPress={() => onRemoveExercise(e.id, e.name)} />
+                ) : (
+                  <Text style={{ color: colors.muted, fontSize: 20 }}>›</Text>
+                )
+              }
             />
           );
         })}
-        <Button
-          label="+ Add exercise"
-          onPress={() => router.push({ pathname: '/add-exercise', params: { dayId } })}
-        />
+        {!removing ? (
+          <Button
+            label="+ Add exercise"
+            onPress={() => router.push({ pathname: '/add-exercise', params: { dayId } })}
+          />
+        ) : null}
       </ScrollView>
       <View style={[styles.content, { borderTopWidth: 1, borderColor: colors.border }]}>
         {day.workout ? (

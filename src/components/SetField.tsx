@@ -4,17 +4,19 @@ import { View } from 'react-native';
 
 import { Field, InlineError } from '@/components/ui';
 import { updateSetField } from '@/data/repository';
-import { parseReps, parseWeight } from '@/lib/format';
+import { fromDisplayWeight, parseReps, parseWeight, toDisplayWeight } from '@/lib/format';
 import { enqueueWrite } from '@/lib/writeQueue';
+import { useSettings } from '@/theme/settings';
 
 const SAVE_DELAY_MS = 500;
 
 type Props = {
   setId: string;
   field: 'reps' | 'weight';
+  /** Stored value; weights are in kg. */
   initial: number | null;
   autoFocus?: boolean;
-  /** Called with every valid value as the user types (used to show a parent weight on partial rows). */
+  /** Called with every valid value as typed, in the display unit (used to show a parent weight on partial rows). */
   onValueChange?: (value: number | null) => void;
   /** Called when a write fails, with a function that retries it. */
   onSaveError: (retry: () => Promise<void>) => void;
@@ -24,10 +26,13 @@ type Props = {
  * A reps or weight input that saves itself: within 500 ms of the last
  * keystroke, on blur, and on unmount, so a restart at any moment keeps what
  * was typed (SPEC.md 3.5, 6). Invalid values are shown but never saved.
+ * Weights are typed in the chosen unit and stored in kg.
  */
 export function SetField({ setId, field, initial, autoFocus, onValueChange, onSaveError }: Props) {
   const db = useSQLiteContext();
-  const [text, setText] = useState(initial === null ? '' : String(initial));
+  const { unit } = useSettings();
+  const shown = initial === null ? null : field === 'weight' ? toDisplayWeight(initial, unit) : initial;
+  const [text, setText] = useState(shown === null ? '' : String(shown));
   const [error, setError] = useState<string | null>(null);
   const pending = useRef<{ value: number | null } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -58,7 +63,8 @@ export function SetField({ setId, field, initial, autoFocus, onValueChange, onSa
     }
     setError(null);
     onValueChange?.(parsed.value);
-    pending.current = { value: parsed.value };
+    const stored = field === 'weight' && parsed.value !== null ? fromDisplayWeight(parsed.value, unit) : parsed.value;
+    pending.current = { value: stored };
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(flush, SAVE_DELAY_MS);
   }
@@ -69,11 +75,11 @@ export function SetField({ setId, field, initial, autoFocus, onValueChange, onSa
         value={text}
         onChangeText={onChangeText}
         onBlur={flush}
-        placeholder={field === 'reps' ? 'Reps' : 'kg'}
+        placeholder={field === 'reps' ? 'Reps' : unit}
         keyboardType={field === 'reps' ? 'number-pad' : 'decimal-pad'}
         autoFocus={autoFocus}
         invalid={!!error}
-        accessibilityLabel={field === 'reps' ? 'Reps' : 'Weight in kg'}
+        accessibilityLabel={field === 'reps' ? 'Reps' : `Weight in ${unit}`}
         style={{ paddingVertical: 8 }}
       />
       {error ? <InlineError>{error}</InlineError> : null}

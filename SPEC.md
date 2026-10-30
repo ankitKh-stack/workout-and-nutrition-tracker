@@ -25,7 +25,7 @@ These terms are used throughout the spec. They are defined for a reader who has 
 | **Rep (repetition)** | One complete movement of an exercise, for example lifting the weight up and lowering it once. |
 | **Set** | A group of reps done back to back without resting, for example "10 reps at 20 kg". A workout usually has several sets of each exercise. |
 | **Normal set** | A set logged on its own, with reps and weight, that is not part of an intensifier. Intensifiers attach to normal sets. |
-| **Weight** | The load lifted in a set, entered as a number. The prototype shows the label "kg" and does no unit conversion (see section 9). |
+| **Weight** | The load lifted in a set, entered as a number. Shown and typed in kg or lb, chosen on the More tab (3.10); always stored in kg. |
 | **Bodyweight exercise** | An exercise where the lifter moves their own body instead of an added weight, such as a push-up. Logged with weight empty or 0. |
 | **Volume** | A simple measure of how much work was done: weight × reps. A set of 10 reps at 20 kg has a volume of 200. A workout's volume is the sum of the volume of every set in it. |
 | **Intensifier** | A technique that makes a set harder than a normal set. The app supports exactly three: drop set, partial reps and superset. |
@@ -44,10 +44,12 @@ These terms are used throughout the spec. They are defined for a reader who has 
 
 ### 3.0 Navigation structure
 
-**Summary:** The app has three tabs at the bottom: Workouts, Calendar and Nutrition. Everything to do with days, exercises and logging lives under the Workouts tab as a stack of screens the user moves forward and back through.
+**Summary:** The app has four tabs at the bottom: Workouts, Calendar, Nutrition and More. Everything to do with days, exercises and logging lives under the Workouts tab as a stack of screens the user moves forward and back through.
 
 **Technical:**
-- Use `expo-router` (the default navigation in a new Expo project) with a bottom tab layout of three tabs: `Workouts`, `Calendar`, `Nutrition`. The app opens on the `Workouts` tab.
+- Use `expo-router` (the default navigation in a new Expo project) with a bottom tab layout of four tabs: `Workouts`, `Calendar`, `Nutrition`, `More`. The app opens on the `Workouts` tab.
+- Tab root screens (Home, Calendar, Nutrition, More) hide the navigation header and show a large page title with the weekday and date above it ("FRIDAY, OCTOBER 30"), following the reference screenshots.
+- The app has a light and a dark theme (3.10). Colours come from one palette per theme in `src/theme/palette.ts`; screens never hard-code colours.
 - Workouts stack, in push order: Home / Day list (3.1) → Day detail (3.3) → Exercise logging (3.5).
 - Modal screens (presented over the current screen, dismissed with Cancel or the system back gesture): Name Your Day (3.2), Add exercise (3.4), Intensifier picker (3.6), Variation swap (3.7).
 - Every screen follows the loose visual inspiration: items are presented as a vertical list, each row has one clear entry field or one clear button, and density is similar to a typical tracking app (several rows visible at once). No colours, fonts or spacing values are specified; use the platform defaults or plain styles.
@@ -61,8 +63,8 @@ These terms are used throughout the spec. They are defined for a reader who has 
 
 **What the user sees:**
 - Screen title: "Workouts".
-- A vertical list, one row per day basket, in the order they were created (oldest at the top).
-- Each row shows: the day's name (for example "Push Day"); a second line with the number of exercises ("4 exercises") and the date of the last completed workout of this day ("Last workout: 28 Oct 2026") or "No workouts yet". If this day has a workout in progress, the second line instead reads "Workout in progress".
+- A vertical list, one row per day basket. A day with a workout in progress is listed first and highlighted with a green outline and the label "IN PROGRESS · STARTED 18:05" above its name, so the user can get back to it in one tap. The other days follow in the order they were created (oldest first).
+- Each row shows: the day's name (for example "Push Day"); a second line with the number of exercises ("4 exercises") and the date of the last completed workout of this day ("Last workout: 28 Oct 2026") or "No workouts yet".
 - A button at the bottom of the list (or top-right of the header): "+ New day".
 
 **Fields and controls:**
@@ -128,7 +130,7 @@ These terms are used throughout the spec. They are defined for a reader who has 
 - Exercise rows (tappable).
 - "+ Add exercise" button.
 - "Start workout" / "Finish workout" button.
-- "⋯" menu with two items: "Rename day", "Delete day".
+- "⋯" menu with three items: "Rename day", "Remove exercises", "Delete day".
 
 **Actions:**
 - Tap "+ Add exercise" → opens Add exercise (3.4). Allowed with or without a workout in progress.
@@ -139,12 +141,14 @@ These terms are used throughout the spec. They are defined for a reader who has 
   - If at least one set row exists in this workout: mark the workout completed and show a confirmation banner at the top of the screen for 3 seconds: "Workout saved". The button returns to "Start workout".
   - If no set rows exist: show a dialog "No sets were logged. Save this as a workout with zero volume?" with "Save" and "Cancel". Save completes the workout (it will show on the calendar in the faintest shade); Cancel leaves it in progress.
 - "⋯" → "Rename day" → opens Name Your Day (3.2) in rename mode.
+- "⋯" → "Remove exercises" → each exercise row shows a red "Remove" button instead of the "›" arrow, and a "Done" button appears above the list. Tapping "Remove" shows: "Remove 'Bench press'? This permanently removes 1 variation and 6 logged sets (including past workouts, so their volume and calendar shade will change). This cannot be undone." Remove deletes the exercise; Cancel closes the dialog. "Done" returns the rows to normal. The menu item is disabled when the day has no exercises.
 - "⋯" → "Delete day" → shows a confirmation dialog: "Delete 'Push Day'? This permanently removes its 4 exercises and 12 logged workouts. This cannot be undone." with "Delete" (destructive style) and "Cancel". Delete removes the day and everything belonging to it and returns to Home (3.1). Cancel closes the dialog.
 
 **Empty state:** When the day has no exercises, the list area shows "No exercises yet. Add your first exercise." above the "+ Add exercise" button. "Start workout" remains enabled (a zero-volume workout is a valid settled case).
 
 **Error states:**
 - Storage read fails: "Could not load this day." with "Try again".
+- Remove exercise fails: "Could not remove this exercise. Nothing was removed."
 - Delete fails: "Could not delete this day. Nothing was removed." (the delete runs in a single transaction, so a failure leaves all data intact).
 
 **Technical:**
@@ -343,6 +347,21 @@ These terms are used throughout the spec. They are defined for a reader who has 
 
 ---
 
+### 3.10 More (settings)
+
+**Summary:** A settings screen with two pill toggles: Theme (Light / Dark) and Weight (kg / lb). Both take effect immediately on every screen and are remembered after a restart. Switching the unit changes how weights are shown and typed; it never changes stored data.
+
+**What the user sees:** Large title "More"; a card "Theme" with a Light | Dark pill toggle; a card "Weight" with a kg | lb pill toggle and the note "Switching converts every weight you see, including past workouts. Your logged data is not changed."
+
+**Empty and error states:** None. If saving a setting fails, the change still applies for this session and a warning is logged.
+
+**Technical:**
+- Settings are stored in the `settings` record (5.9) and loaded before the first screen renders, so the app never flashes the wrong theme. Until the user picks a theme, the phone's system appearance is used.
+- Weights are stored in kg. Display value = kg ÷ 0.45359237 for lb, rounded to 2 decimals; a value typed in lb is stored as value × 0.45359237 at full precision, so it shows back exactly as typed. Volumes are computed in kg and converted for display, so percentage changes and shades do not depend on the unit.
+- Field labels, placeholders, "Last time", partial-reps "@ … lb" text and calendar volumes all use the chosen unit.
+
+---
+
 ## 4. User flows
 
 Each flow starts from a freshly opened app on the Workouts tab unless stated otherwise. "Expected end state" describes what a tester can check on screen and, where relevant, after force-closing and reopening the app.
@@ -468,6 +487,8 @@ Relation: an Exercise belongs to exactly one DayBasket and has one or more Varia
 
 Relation: a Variation belongs to exactly one Exercise, and every Set records the Variation it was performed on, which is how progression is kept for each variation separately.
 
+Deleting an Exercise (3.3 "Remove exercises") deletes, in one transaction: intensifiers attached to its sets and superset intensifiers that paired with it (with their child sets), every set logged on its variations, its variations, then the exercise. Volumes are computed on read, so past workouts and the calendar reflect the removal immediately.
+
 ### 5.4 Workout (workout log)
 
 - `dayId` — the DayBasket this workout was for.
@@ -486,7 +507,7 @@ Relation: a Workout belongs to exactly one DayBasket and has many Sets and Inten
 - `intensifierId` — empty for a normal set; for an intensifier row, the Intensifier it belongs to.
 - `position` — order among normal sets of the same variation in the same workout (used for "Set 1, Set 2" numbering).
 - `reps` — whole number 0–999, or empty.
-- `weight` — number 0–9999 with up to 2 decimals, or empty; always empty for a partial reps row.
+- `weight` — number in kg, or empty; always empty for a partial reps row. The 0–9999, 2-decimal limit applies to the value typed in the chosen unit.
 
 Relation: a Set belongs to one Workout and one Variation; a normal Set can be the parent of many Intensifiers, and an intensifier row Set belongs to exactly one Intensifier.
 
@@ -541,6 +562,15 @@ Examples: Vp 1,000, V 1,200 → +20%. Vp 1,200, V 2,500 → +108.3%. Vp 1,000, V
 
 ---
 
+### 5.9 Settings
+
+- `key` — `theme` or `unit`.
+- `value` — `light` / `dark`, or `kg` / `lb`.
+
+Relation: settings are global to the app and link to no other record. Added in schema version 2; the upgrade only creates this table and keeps all existing data.
+
+---
+
 ## 6. Storage and persistence
 
 **Summary:** All data is stored in a small database file on the phone, so it is still there after the app is closed, the phone restarts, or the developer reloads the app. Every change is written as it happens, not only when a workout is finished, so nothing is lost if the app is closed mid-workout. A cloud backup can be added later without changing the records.
@@ -574,6 +604,7 @@ Examples: Vp 1,000, V 1,200 → +20%. Vp 1,200, V 2,500 → +108.3%. Vp 1,000, V
 
 **Rules for drawing:**
 - Use one progress colour in five steps from faintest (zero volume) to darkest (Level 4), plus a separate neutral colour for "no workout". The exact colour values are left to the builder; the only requirements are that each of the six shades is visibly different from its neighbours and that they get darker in the order of the table.
+- In the dark theme the scale runs from dim to bright green instead (the brightest square is Level 4), because "more intense" reads as brighter on a dark background. The level order and bands are unchanged.
 - Band edges are exact: 24.9% is Level 1, 25% is Level 2, 49.9% is Level 2, 50% is Level 3, 99.9% is Level 3, 100% is Level 4.
 - If one date has several completed workouts, the square shows the darkest level among them, and the detail area lists each one (see section 9).
 - Shades are recomputed every time the Calendar gains focus, so finishing, renaming or deleting is reflected the next time the Calendar is shown.
@@ -590,13 +621,12 @@ The prototype must not include the following. Each is excluded for the reason gi
 | Backend services, servers, cloud sync or a built cloud backup | Data lives on the phone for the prototype; section 6 only describes where a backup would fit later. |
 | User accounts, login, sign-up, passwords | Not needed for on-device data and adds work that does not prove the workout loop. |
 | Billing, subscriptions, payments, ads | Not part of proving the prototype. |
-| Polished visual design (custom colours, fonts, spacing, logo, animations, themes) | The prototype proves behaviour first; styling follows the loose list-based inspiration only. |
+| Polished visual design beyond the light/dark palettes (custom fonts, logo, animations) | The prototype proves behaviour first; layout follows the reference screenshots loosely. |
 | A built-in exercise library or preset exercise lists | The user creates exercises by typing a name; presets were not requested. |
 | Intensifiers other than drop set, partial reps and superset, or user-defined intensifier types | The settled decision is exactly three intensifiers. |
 | Rest timers, workout timers, reminders, notifications | Not requested. |
 | Charts, graphs, statistics screens or best-lift tracking beyond the calendar and the "Last time" line | Not requested; the calendar is the requested progress view. |
 | Workout templates, planned sets or rep targets | Not requested. |
-| Weight unit settings or kg/lb conversion | Not requested; the prototype stores a plain number and labels it "kg" (see section 9). |
 | Data export or import, sharing, social features | Not requested. |
 | Reordering days or exercises by drag and drop | Not requested; lists use creation order. |
 | A web version | The fixed stack targets Android and iPhone. |
@@ -616,9 +646,9 @@ The brief left the points below undecided. The provisional defaults were reviewe
 4. Partial reps **count toward volume**, using the parent set's weight.
 5. When two or more workouts are completed on the same date, the square shows the **darkest** of their levels, and the detail area lists each one.
 6. Bodyweight exercises logged with no weight contribute **0** to volume (weight × reps); no special handling.
-7. Weight is a plain number labelled **kg**, with no unit setting or conversion.
+7. ~~Weight is labelled kg with no conversion.~~ Superseded: weight is shown in **kg or lb**, chosen on the More tab, and stored in kg (3.10).
 8. Completed workouts are **read-only**; their sets cannot be edited or deleted, and a completed workout cannot be deleted on its own (only by deleting its day).
-9. Exercises and variations **cannot be renamed or deleted** in the prototype.
+9. Exercises **can be removed** (3.3), which also removes their logged sets. Variations still cannot be renamed or deleted, and exercises cannot be renamed.
 10. Each exercise and its variations **belong to one day basket**; progression is not shared between days.
 11. An in-progress workout **can only be finished**, not discarded.
 12. The calendar week starts on **Monday**, and **20 weeks** are visible by default.

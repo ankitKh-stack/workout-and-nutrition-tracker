@@ -3,13 +3,15 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useState } from 'react';
 import { View } from 'react-native';
 
-import { Button, Field, InlineError, styles } from '@/components/ui';
+import { Button, Field, InlineError } from '@/components/ui';
 import { addExercise, ValidationError } from '@/data/repository';
+import { useTheme } from '@/theme/settings';
 
 // Add exercise (SPEC.md 3.4). Typing a name creates the exercise and its
 // first variation; the screen underneath reloads on focus and shows it.
 export default function AddExerciseScreen() {
   const db = useSQLiteContext();
+  const { styles } = useTheme();
   const { dayId } = useLocalSearchParams<{ dayId: string }>();
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);

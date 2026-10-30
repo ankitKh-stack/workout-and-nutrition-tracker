@@ -1,27 +1,11 @@
-// Plain building blocks for the list-based screens. Styling is deliberately
-// minimal: the prototype proves behaviour, not visual design (SPEC.md 8).
+// Plain building blocks for the list-based screens. Colours come from the
+// active theme (light or dark); see src/theme.
 import type { ReactNode } from 'react';
-import {
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-  type StyleProp,
-  type TextInputProps,
-  type ViewStyle,
-} from 'react-native';
+import { Pressable, Text, TextInput, View, type StyleProp, type TextInputProps, type ViewStyle } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-export const colors = {
-  text: '#111827',
-  muted: '#6b7280',
-  border: '#e5e7eb',
-  background: '#ffffff',
-  surface: '#f9fafb',
-  primary: '#2563eb',
-  danger: '#dc2626',
-  success: '#15803d',
-};
+import { formatDayHeading } from '@/lib/format';
+import { useTheme } from '@/theme/settings';
 
 type ButtonProps = {
   label: string;
@@ -33,6 +17,7 @@ type ButtonProps = {
 };
 
 export function Button({ label, onPress, variant = 'secondary', disabled, style, compact }: ButtonProps) {
+  const { styles } = useTheme();
   return (
     <Pressable
       accessibilityRole="button"
@@ -69,17 +54,22 @@ type ListRowProps = {
   onPress?: () => void;
   right?: ReactNode;
   disabled?: boolean;
+  style?: StyleProp<ViewStyle>;
+  /** Small coloured label above the title, e.g. "IN PROGRESS". */
+  badge?: { label: string; color: string };
 };
 
-export function ListRow({ title, subtitle, onPress, right, disabled }: ListRowProps) {
+export function ListRow({ title, subtitle, onPress, right, disabled, style, badge }: ListRowProps) {
+  const { styles } = useTheme();
   return (
     <Pressable
       accessibilityRole={onPress ? 'button' : undefined}
       onPress={onPress}
       disabled={disabled || !onPress}
-      style={({ pressed }) => [styles.row, pressed && styles.pressed, disabled && styles.buttonDisabled]}
+      style={({ pressed }) => [styles.row, pressed && styles.pressed, disabled && styles.buttonDisabled, style]}
     >
       <View style={styles.rowText}>
+        {badge ? <Text style={[styles.eyebrow, { color: badge.color }]}>{badge.label}</Text> : null}
         <Text style={styles.rowTitle}>{title}</Text>
         {subtitle ? <Text style={styles.rowSubtitle}>{subtitle}</Text> : null}
       </View>
@@ -89,6 +79,7 @@ export function ListRow({ title, subtitle, onPress, right, disabled }: ListRowPr
 }
 
 export function Field(props: TextInputProps & { invalid?: boolean }) {
+  const { styles, colors } = useTheme();
   const { invalid, style, ...rest } = props;
   return (
     <TextInput
@@ -100,6 +91,7 @@ export function Field(props: TextInputProps & { invalid?: boolean }) {
 }
 
 export function ErrorView({ message, onRetry }: { message: string; onRetry: () => void }) {
+  const { styles } = useTheme();
   return (
     <View style={styles.centered}>
       <Text style={styles.errorText}>{message}</Text>
@@ -109,65 +101,59 @@ export function ErrorView({ message, onRetry }: { message: string; onRetry: () =
 }
 
 export function EmptyText({ children }: { children: ReactNode }) {
+  const { styles } = useTheme();
   return <Text style={styles.empty}>{children}</Text>;
 }
 
 export function InlineError({ children }: { children: ReactNode }) {
+  const { styles } = useTheme();
   return <Text style={styles.inlineError}>{children}</Text>;
 }
 
-export const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
-  content: { padding: 16, gap: 8 },
-  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
-  button: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    alignItems: 'center',
-  },
-  buttonCompact: { paddingVertical: 6, paddingHorizontal: 10 },
-  buttonPrimary: { backgroundColor: colors.primary, borderColor: colors.primary },
-  buttonDanger: { backgroundColor: colors.danger, borderColor: colors.danger },
-  buttonLink: { backgroundColor: 'transparent', borderColor: 'transparent', paddingHorizontal: 4 },
-  buttonDisabled: { opacity: 0.4 },
-  buttonText: { fontSize: 15, fontWeight: '600', color: colors.text },
-  buttonTextOnColor: { color: '#ffffff' },
-  buttonTextLink: { color: colors.primary },
-  pressed: { opacity: 0.7 },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.background,
-    gap: 8,
-  },
-  rowText: { flex: 1, gap: 2 },
-  rowTitle: { fontSize: 16, fontWeight: '600', color: colors.text },
-  rowSubtitle: { fontSize: 13, color: colors.muted },
-  field: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    fontSize: 16,
-    color: colors.text,
-    backgroundColor: colors.background,
-  },
-  fieldInvalid: { borderColor: colors.danger },
-  errorText: { fontSize: 15, color: colors.text, textAlign: 'center' },
-  empty: { fontSize: 15, color: colors.muted, paddingVertical: 12 },
-  inlineError: { fontSize: 13, color: colors.danger },
-  muted: { fontSize: 14, color: colors.muted },
-  body: { fontSize: 15, color: colors.text },
-  title: { fontSize: 20, fontWeight: '700', color: colors.text },
-  buttonRow: { flexDirection: 'row', gap: 8 },
-});
+/** Pill toggle in the style of the reference screenshots ("Consumed | Remaining"). */
+export function Segmented<T extends string>({
+  options,
+  value,
+  onChange,
+  accessibilityLabel,
+}: {
+  options: { value: T; label: string }[];
+  value: T;
+  onChange: (value: T) => void;
+  accessibilityLabel?: string;
+}) {
+  const { styles } = useTheme();
+  return (
+    <View style={styles.segmented} accessibilityRole="radiogroup" accessibilityLabel={accessibilityLabel}>
+      {options.map((o) => {
+        const selected = o.value === value;
+        return (
+          <Pressable
+            key={o.value}
+            accessibilityRole="radio"
+            accessibilityState={{ checked: selected }}
+            onPress={() => onChange(o.value)}
+            style={[styles.segment, selected && styles.segmentSelected]}
+          >
+            <Text style={[styles.segmentText, selected && styles.segmentTextSelected]}>{o.label}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+/** Large page title with today's date above it, used on tab root screens. */
+export function LargeHeader({ title, right }: { title: string; right?: ReactNode }) {
+  const { styles } = useTheme();
+  const insets = useSafeAreaInsets();
+  return (
+    <View style={{ paddingTop: insets.top + 12, paddingHorizontal: 16, paddingBottom: 4 }}>
+      <Text style={styles.eyebrow}>{formatDayHeading(new Date())}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <Text style={[styles.largeTitle, { flex: 1 }]}>{title}</Text>
+        {right}
+      </View>
+    </View>
+  );
+}

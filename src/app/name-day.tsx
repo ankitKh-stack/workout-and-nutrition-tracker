@@ -3,13 +3,15 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 
-import { Button, Field, InlineError, styles } from '@/components/ui';
+import { Button, Field, InlineError } from '@/components/ui';
 import { createDay, getDayName, renameDay, ValidationError } from '@/data/repository';
+import { useTheme } from '@/theme/settings';
 
 // Name Your Day, used for both create and rename (SPEC.md 3.2).
 // With a dayId param it renames that day; without one it creates a new day.
 export default function NameDayScreen() {
   const db = useSQLiteContext();
+  const { styles } = useTheme();
   const { dayId } = useLocalSearchParams<{ dayId?: string }>();
   const isRename = !!dayId;
   const [name, setName] = useState('');

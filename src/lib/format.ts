@@ -30,6 +30,14 @@ export function formatDateShort(s: string): string {
   return `${d.getDate()} ${MONTHS[d.getMonth()]}`;
 }
 
+const WEEKDAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+/** "Thursday, October 30" */
+export function formatDayHeading(d: Date): string {
+  return `${WEEKDAYS_LONG[d.getDay()]}, ${MONTHS_LONG[d.getMonth()]} ${d.getDate()}`;
+}
+
 /** "18:05" from an ISO timestamp, in local time. */
 export function formatTime(iso: string): string {
   const d = new Date(iso);
@@ -44,9 +52,27 @@ export function formatNumber(n: number): string {
   return `${rounded < 0 ? '−' : ''}${grouped}${frac ? `.${frac}` : ''}`;
 }
 
-/** A stored weight for display; empty shows as "—". */
-export function formatWeight(w: number | null): string {
-  return w === null ? '—' : formatNumber(w);
+// Weights are always stored in kg; the chosen unit only affects what the user
+// sees and types. Storing one unit keeps volumes and percentage changes
+// comparable no matter when the unit was switched.
+export type Unit = 'kg' | 'lb';
+const KG_PER_LB = 0.45359237;
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/** Stored kg -> the value shown in the chosen unit, rounded to 2 decimals. */
+export function toDisplayWeight(kg: number, unit: Unit): number {
+  return round2(unit === 'kg' ? kg : kg / KG_PER_LB);
+}
+
+/** A value typed in the chosen unit -> kg for storage (full precision). */
+export function fromDisplayWeight(value: number, unit: Unit): number {
+  return unit === 'kg' ? value : value * KG_PER_LB;
+}
+
+/** A stored kg weight for display in the chosen unit; empty shows as "—". */
+export function formatWeight(kg: number | null, unit: Unit): string {
+  return kg === null ? '—' : formatNumber(toDisplayWeight(kg, unit));
 }
 
 /** "+18%" / "−12%" from an unrounded percentage. */

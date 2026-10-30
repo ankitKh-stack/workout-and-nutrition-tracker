@@ -3,15 +3,17 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 
-import { Button, colors, EmptyText, ErrorView, Field, InlineError, ListRow, styles } from '@/components/ui';
+import { Button, EmptyText, ErrorView, Field, InlineError, ListRow } from '@/components/ui';
 import { createVariationAndSwap, getSwapData, swapVariation, ValidationError } from '@/data/repository';
 import { formatDateLong } from '@/lib/format';
 import { useFocusData } from '@/lib/useFocusData';
+import { useTheme } from '@/theme/settings';
 
 // Variation swap with create-on-the-spot (SPEC.md 3.7). Swapping never moves
 // sets: what was logged stays on the old variation.
 export default function SwapVariationScreen() {
   const db = useSQLiteContext();
+  const { styles, colors } = useTheme();
   const { workoutId, exerciseId } = useLocalSearchParams<{ workoutId: string; exerciseId: string }>();
   const { data, error, reload } = useFocusData(() => getSwapData(db, workoutId, exerciseId), [db, workoutId, exerciseId]);
   const [name, setName] = useState('');
