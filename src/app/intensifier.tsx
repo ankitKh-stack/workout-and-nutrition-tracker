@@ -17,7 +17,9 @@ import { useTheme } from '@/theme/settings';
 // Intensifier picker (SPEC.md 3.6): exactly three choices.
 export default function IntensifierScreen() {
   const db = useSQLiteContext();
-  const { styles } = useTheme();
+  const { styles, colors } = useTheme();
+  // Each kind keeps the same colour mark it has on the logging screen.
+  const mark = (color: string) => ({ borderLeftWidth: 3, borderLeftColor: color });
   const { workoutId, setId } = useLocalSearchParams<{ workoutId: string; setId: string }>();
   const { data, error, reload } = useFocusData(
     () => getIntensifierPickerData(db, workoutId, setId),
@@ -49,14 +51,16 @@ export default function IntensifierScreen() {
       {saveError ? <InlineError>{saveError}</InlineError> : null}
       {step === 'choose' ? (
         <>
-          <ListRow title="Drop set" subtitle="Lower the weight and keep going" onPress={() => add('drop')} />
+          <ListRow title="Drop set" subtitle="Lower the weight and keep going" style={mark(colors.kinds.drop)} onPress={() => add('drop')} />
           <ListRow
             title="Partial reps"
             subtitle="Extra short-range reps at the same weight"
+            style={mark(colors.kinds.partial)}
             onPress={() => add('partial')}
           />
           <ListRow
             title="Superset"
+            style={mark(colors.kinds.superset)}
             subtitle={
               data.hasSuperset ? 'This set already has a superset' : 'Pair this set with a set of another exercise'
             }

@@ -75,7 +75,9 @@ These terms are used throughout the spec. They are defined for a reader who has 
 - Tap a day row → opens Day detail (3.3) for that day.
 - Tap "+ New day" → opens Name Your Day (3.2) in create mode.
 
-**Empty state:** When no days exist, the list area shows the text "No days yet. Create your first day, for example Push Day, Pull Day or Leg Day." and the "+ New day" button stays visible.
+**This week:** under the list, once any workout is completed, a card "This week" shows Monday to Sunday as seven squares in the calendar's shades, with "2 workouts · last 28 Oct" beside the heading. Tapping it opens the Calendar.
+
+**Empty state:** Until the first workout is finished, a "Getting started" card lists four steps (name a day, add exercises, start a workout and log sets, finish it), each ticked from the real data, with "1 of 4 done". Under it: "Common splits: Push day, Pull day, Leg day, Upper, Lower, Full body."
 
 **Error state:** If reading from storage fails, show "Could not load your days." with a "Try again" button that re-runs the read. (Reason: storage failure is rare but should never show a blank screen that looks like data loss.)
 
@@ -136,13 +138,15 @@ These terms are used throughout the spec. They are defined for a reader who has 
 - Tap "+ Add exercise" → opens Add exercise (3.4). Allowed with or without a workout in progress.
 - Tap "Start workout" → creates an in-progress workout for this day dated today; the status line and button update immediately.
 - Tap an exercise row while a workout is in progress → opens Exercise logging (3.5) for that exercise.
-- Tap an exercise row while no workout is in progress → shows a dialog "Start a workout for Push Day now?" with "Start" and "Cancel". Start creates the workout and opens Exercise logging. Cancel closes the dialog. (Reason: sets can only be logged inside a workout, and an explicit question prevents accidental empty workouts appearing on the calendar.)
+- Tap an exercise row while no workout is in progress → opens Exercise history (3.11), read-only. No workout is started and nothing is written. (Reason: the user often wants to check what they lifted last time without starting a workout; workouts start only from the "Start workout" button.)
 - Tap "Finish workout":
   - If at least one set row exists in this workout: mark the workout completed and show a confirmation banner at the top of the screen for 3 seconds: "Workout saved". The button returns to "Start workout".
   - If no set rows exist: show a dialog "No sets were logged. Save this as a workout with zero volume?" with "Save" and "Cancel". Save completes the workout (it will show on the calendar in the faintest shade); Cancel leaves it in progress.
 - "⋯" → "Rename day" → opens Name Your Day (3.2) in rename mode.
 - "⋯" → "Remove exercises" → each exercise row shows a red "Remove" button instead of the "›" arrow, and a "Done" button appears above the list. Tapping "Remove" shows: "Remove 'Bench press'? This permanently removes 1 variation and 6 logged sets (including past workouts, so their volume and calendar shade will change). This cannot be undone." Remove deletes the exercise; Cancel closes the dialog. "Done" returns the rows to normal. The menu item is disabled when the day has no exercises.
 - "⋯" → "Delete day" → shows a confirmation dialog: "Delete 'Push Day'? This permanently removes its 4 exercises and 12 logged workouts. This cannot be undone." with "Delete" (destructive style) and "Cancel". Delete removes the day and everything belonging to it and returns to Home (3.1). Cancel closes the dialog.
+
+**Summary card:** at the top of the list, a card shows either "In progress · started 18:05" with the workout's volume so far and "Sets so far" (the same count as the rows below), or "Last workout 28 Oct 2026" with that workout's volume, or "No workouts yet" with a dash.
 
 **Empty state:** When the day has no exercises, the list area shows "No exercises yet. Add your first exercise." above the "+ Add exercise" button. "Start workout" remains enabled (a zero-volume workout is a valid settled case).
 
@@ -240,6 +244,8 @@ These terms are used throughout the spec. They are defined for a reader who has 
 
 ---
 
+**Last time beside each set (added in the restyle):** each normal set's card shows, at its top right, the set with the same number from the last completed workout on this variation ("Last 10 × 60 kg"), so the comparison sits beside the fields being filled in. The variation card then shows only "Last done 21 Oct · 3 sets". Each field has its label above it ("Reps", "Weight (kg)").
+
 ### 3.6 Intensifier picker
 
 **Summary:** A small list that appears when the user taps "+ Intensifier" on a set. It offers exactly three choices — Drop set, Partial reps and Superset. Choosing one adds an indented row under that set.
@@ -306,25 +312,29 @@ These terms are used throughout the spec. They are defined for a reader who has 
 
 ### 3.8 Calendar
 
-**Summary:** A GitHub-style grid of small squares, one per calendar date, showing the recent weeks. A date with a completed workout is shaded; the bigger the increase in that workout's volume compared with the previous workout of the same day, the darker the square. Tapping a square shows the details for that date.
+**Summary:** One month at a time, laid out as a normal month calendar, with each day drawn as a GitHub-style shaded square. A date with a completed workout is shaded; the bigger the increase in that workout's volume compared with the previous workout of the same day, the stronger the shade. Arrow buttons move between months, and tapping a day shows its details.
 
 **What the user sees:**
 - Title: "Calendar".
-- The grid: each column is one week and each row is one weekday, Monday at the top and Sunday at the bottom, with single-letter weekday labels (M, T, W, T, F, S, S) at the left. Month abbreviations ("Sep", "Oct") appear above the first column of each month. The newest week is at the right edge; the view shows the most recent 20 weeks including the current week and scrolls horizontally to the left to show earlier weeks, back to the week of the first completed workout.
-- Squares for dates after today are not drawn.
+- A month header: "‹" button, the month and year ("October 2026") with the number of days that have a workout underneath ("3 workout days" or "No workouts"), and a "›" button.
+- Weekday labels M T W T F S S (Monday first), then the month's days as rounded squares in rows of seven, each showing its day number. Days before the 1st and after the last day of the month are blank. Today's number is bold.
+- Days after today are shown faded, with no shade, and cannot be tapped.
+- The app opens on the current month.
 - A legend under the grid: "Less" followed by the six shade squares in order (no workout, zero volume, level 1–4) followed by "More".
 - A detail area under the legend, initially showing "Tap a square to see that day."
 
 **Fields and controls:**
-- Each square is tappable.
-- Horizontal scroll on the grid.
+- Each day square up to today is tappable.
+- "‹" (Previous month) and "›" (Next month).
 
 **Actions:**
 - Tap a square with a completed workout → the detail area shows, for each completed workout on that date (newest first): the day basket's current name, total volume (for example "Volume: 4,250"), the change versus the previous workout of the same day ("+18% vs 21 Oct", "First workout — counted as +100%", "Zero volume", or "−12% vs 21 Oct"), and the shade level name ("Level 1"…"Level 4" or "Zero volume").
 - Tap a square with no workout → the detail area shows the date and "No workout logged".
 - The selected square is outlined.
+- "‹" → shows the previous month and clears the selection. Disabled in the month of the first completed workout (or the current month when there are none).
+- "›" → shows the next month and clears the selection. Disabled in the current month.
 
-**Empty state:** No completed workouts at all: the grid shows the most recent 20 weeks, every square in the "no workout" shade, and the detail area reads "No workouts logged yet. Finish a workout to see it here."
+**Empty state:** No completed workouts at all: the current month is shown with every square in the "no workout" shade, both arrows are disabled, and the detail area reads "No workouts logged yet. Finish a workout to see it here."
 
 **Error state:** Storage read fails: "Could not load the calendar." with "Try again".
 
@@ -353,12 +363,30 @@ These terms are used throughout the spec. They are defined for a reader who has 
 
 **What the user sees:** Large title "More"; a card "Theme" with a Light | Dark pill toggle; a card "Weight" with a kg | lb pill toggle and the note "Switching converts every weight you see, including past workouts. Your logged data is not changed."
 
+**Your data:** a third card shows counts of days, exercises, completed workouts and sets logged in them, with "Stored only on this phone. Nothing is uploaded."
+
 **Empty and error states:** None. If saving a setting fails, the change still applies for this session and a warning is logged.
 
 **Technical:**
 - Settings are stored in the `settings` record (5.9) and loaded before the first screen renders, so the app never flashes the wrong theme. Until the user picks a theme, the phone's system appearance is used.
 - Weights are stored in kg. Display value = kg ÷ 0.45359237 for lb, rounded to 2 decimals; a value typed in lb is stored as value × 0.45359237 at full precision, so it shows back exactly as typed. Volumes are computed in kg and converted for display, so percentage changes and shades do not depend on the unit.
 - Field labels, placeholders, "Last time", partial-reps "@ … lb" text and calendar volumes all use the chosen unit.
+
+### 3.11 Exercise history (read-only)
+
+**Summary:** Opened by tapping an exercise when no workout is in progress. It shows what was lifted on that exercise in recent workouts, so the user can check last week's numbers without starting a workout. Nothing on this screen changes data.
+
+**What the user sees:**
+- Header: the exercise name.
+- When the exercise has more than one variation: a row of pill chips, one per variation, with the current variation selected. Tapping a chip shows that variation's history; it does not change which variation the next workout opens on.
+- Up to the 5 most recent completed workouts that logged sets on the selected variation, newest first. Each is a card with the date ("23 Oct 2026"), the volume of that variation in that workout ("Volume 920 kg", superset partner rows excluded because they belong to the other exercise), and each set ("Set 1   10 × 60 kg") followed by its intensifier rows, indented with the intensifier's colour ("Drop  8 × 40 kg", "Partials  4 @ 60 kg", "Superset: Triceps pushdown  12 × 25 kg").
+- A closing hint: "To log sets, tap Start workout on the day screen."
+
+**Empty state:** "No logged workouts for this variation yet."
+
+**Error state:** "Could not load this exercise." with "Try again".
+
+**Technical:** Reads only. Uses the same set-and-intensifier query as the logging screen (5.5, 5.6) for each listed workout; weights are shown in the chosen unit (3.10).
 
 ---
 
@@ -444,7 +472,7 @@ Precondition: "Leg Day" exists with 2 exercises and 3 completed workouts, and "P
 Precondition: "Push Day" has three completed workouts: 14 Oct volume 1,000; 21 Oct volume 1,200; 28 Oct volume 2,500. Also, on 30 Oct a "Push Day" workout was finished with no values entered (volume 0).
 
 1. Tap the "Calendar" tab.
-2. The grid shows the last 20 weeks; squares for 14, 21, 28 and 30 Oct are shaded.
+2. The calendar shows October 2026 ("4 workout days"); the squares for 14, 21, 28 and 30 Oct are shaded. Tapping "‹" shows September 2026 only if a workout exists in or before September; here it is disabled.
 3. Tap the 14 Oct square.
 4. Tap the 21 Oct square.
 5. Tap the 28 Oct square.
@@ -651,7 +679,7 @@ The brief left the points below undecided. The provisional defaults were reviewe
 9. Exercises **can be removed** (3.3), which also removes their logged sets. Variations still cannot be renamed or deleted, and exercises cannot be renamed.
 10. Each exercise and its variations **belong to one day basket**; progression is not shared between days.
 11. An in-progress workout **can only be finished**, not discarded.
-12. The calendar week starts on **Monday**, and **20 weeks** are visible by default.
+12. The calendar week starts on **Monday**. ~~20 weeks are visible.~~ Superseded: the calendar shows **one month at a time** with month arrows (3.8).
 13. Duplicate day names are **blocked**, ignoring case and outer spaces.
 
 ### 9.2 Conflicts between the user's notes and the settled decisions

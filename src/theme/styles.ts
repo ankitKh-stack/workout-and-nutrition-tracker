@@ -1,78 +1,93 @@
 import { StyleSheet } from 'react-native';
 
-import type { Palette } from '@/theme/palette';
+import { fonts, type Palette } from '@/theme/palette';
+
+// Type scale: 12 / 14 / 16 / 20 / 28. Weights 400, 500 and 600 only.
+// Numbers use tabular figures so digits line up and do not jitter as they update.
+const tabular = { fontVariant: ['tabular-nums' as const] };
 
 /**
- * Shared styles, rebuilt from the active palette. Layout follows the
- * reference screenshots: large bold page titles, rounded cards on a darker
- * background, and pill-shaped toggles.
+ * Shared styles, rebuilt from the active palette. Surfaces are separated by a
+ * lightness step, never a border or a shadow; radius is soft (20 on cards,
+ * 12 on nested fields, full pills on controls).
  */
 export function makeStyles(c: Palette) {
   return StyleSheet.create({
     screen: { flex: 1, backgroundColor: c.background },
-    content: { padding: 16, gap: 10 },
+    content: { padding: 16, gap: 12 },
     centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12, backgroundColor: c.background },
 
-    eyebrow: { fontSize: 12, fontWeight: '600', letterSpacing: 0.6, color: c.muted, textTransform: 'uppercase' },
-    largeTitle: { fontSize: 32, fontWeight: '800', color: c.text },
-    sectionTitle: { fontSize: 19, fontWeight: '700', color: c.text, marginTop: 6 },
-    title: { fontSize: 20, fontWeight: '700', color: c.text },
-    body: { fontSize: 15, color: c.text },
-    muted: { fontSize: 14, color: c.muted },
+    pageTitle: { fontFamily: fonts.semibold, fontSize: 28, lineHeight: 34, letterSpacing: -0.4, color: c.text },
+    pageSubtitle: { fontFamily: fonts.regular, fontSize: 14, lineHeight: 20, color: c.muted },
+    sectionTitle: { fontFamily: fonts.semibold, fontSize: 16, lineHeight: 22, color: c.text, marginTop: 8 },
+    title: { fontFamily: fonts.semibold, fontSize: 20, lineHeight: 26, color: c.text },
+    body: { fontFamily: fonts.regular, fontSize: 14, lineHeight: 20, color: c.text },
+    bodyStrong: { fontFamily: fonts.semibold, fontSize: 14, lineHeight: 20, color: c.text },
+    muted: { fontFamily: fonts.regular, fontSize: 14, lineHeight: 20, color: c.muted },
+    small: { fontFamily: fonts.regular, fontSize: 12, lineHeight: 16, color: c.faint },
+    label: { fontFamily: fonts.medium, fontSize: 12, lineHeight: 16, color: c.faint },
+    number: { ...tabular },
 
-    card: { backgroundColor: c.surface, borderRadius: 14, padding: 14, gap: 8 },
+    card: { backgroundColor: c.surface, borderRadius: 20, padding: 16, gap: 10 },
 
     button: {
-      paddingVertical: 13,
-      paddingHorizontal: 16,
-      borderRadius: 12,
-      backgroundColor: c.surfaceAlt,
+      minHeight: 44,
+      paddingVertical: 11,
+      paddingHorizontal: 18,
+      borderRadius: 999,
+      backgroundColor: c.raised,
       alignItems: 'center',
+      justifyContent: 'center',
     },
-    buttonCompact: { paddingVertical: 7, paddingHorizontal: 12, borderRadius: 999 },
+    buttonCompact: { minHeight: 36, paddingVertical: 7, paddingHorizontal: 14 },
     buttonPrimary: { backgroundColor: c.primary },
-    buttonDanger: { backgroundColor: c.danger },
-    buttonLink: { backgroundColor: 'transparent', paddingHorizontal: 4 },
+    buttonDanger: { backgroundColor: 'transparent', borderWidth: 1, borderColor: c.negative },
+    buttonLink: { backgroundColor: 'transparent', paddingHorizontal: 6, minHeight: 36 },
     buttonDisabled: { opacity: 0.4 },
-    buttonText: { fontSize: 15, fontWeight: '600', color: c.text },
-    buttonTextOnColor: { color: c.onPrimary },
-    buttonTextLink: { color: c.primary },
-    pressed: { opacity: 0.7 },
+    buttonText: { fontFamily: fonts.semibold, fontSize: 15, color: c.text },
+    buttonTextPrimary: { color: c.onPrimary },
+    buttonTextDanger: { color: c.negative },
+    buttonTextLink: { color: c.text },
+    pressed: { opacity: 0.65 },
 
     row: {
       flexDirection: 'row',
       alignItems: 'center',
-      paddingVertical: 14,
-      paddingHorizontal: 14,
-      borderRadius: 14,
+      minHeight: 64,
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      borderRadius: 20,
       backgroundColor: c.surface,
-      gap: 10,
+      gap: 12,
     },
-    rowText: { flex: 1, gap: 3 },
-    rowTitle: { fontSize: 16, fontWeight: '700', color: c.text },
-    rowSubtitle: { fontSize: 13, color: c.muted },
+    rowText: { flex: 1, gap: 2 },
+    rowTitle: { fontFamily: fonts.semibold, fontSize: 16, lineHeight: 22, color: c.text },
+    rowSubtitle: { fontFamily: fonts.regular, fontSize: 13, lineHeight: 18, color: c.muted },
 
     field: {
-      borderRadius: 10,
+      minHeight: 44,
+      borderRadius: 12,
       paddingVertical: 10,
       paddingHorizontal: 12,
+      fontFamily: fonts.medium,
       fontSize: 16,
       color: c.text,
-      backgroundColor: c.surfaceAlt,
+      backgroundColor: c.raised,
       borderWidth: 1,
       borderColor: 'transparent',
+      ...tabular,
     },
-    fieldInvalid: { borderColor: c.danger },
+    fieldInvalid: { borderColor: c.negative },
 
-    errorText: { fontSize: 15, color: c.text, textAlign: 'center' },
-    empty: { fontSize: 15, color: c.muted, paddingVertical: 12 },
-    inlineError: { fontSize: 13, color: c.danger },
+    errorText: { fontFamily: fonts.regular, fontSize: 15, color: c.text, textAlign: 'center' },
+    empty: { fontFamily: fonts.regular, fontSize: 14, lineHeight: 20, color: c.muted, paddingVertical: 8 },
+    inlineError: { fontFamily: fonts.regular, fontSize: 12, lineHeight: 16, color: c.negative },
     buttonRow: { flexDirection: 'row', gap: 8 },
 
-    segmented: { flexDirection: 'row', backgroundColor: c.surfaceAlt, borderRadius: 999, padding: 3, alignSelf: 'flex-start' },
-    segment: { paddingVertical: 7, paddingHorizontal: 18, borderRadius: 999 },
-    segmentSelected: { backgroundColor: c.pill },
-    segmentText: { fontSize: 14, fontWeight: '600', color: c.muted },
-    segmentTextSelected: { color: c.onPill },
+    segmented: { flexDirection: 'row', backgroundColor: c.raised, borderRadius: 999, padding: 3, alignSelf: 'flex-start' },
+    segment: { minHeight: 36, justifyContent: 'center', paddingHorizontal: 18, borderRadius: 999 },
+    segmentSelected: { backgroundColor: c.primary },
+    segmentText: { fontFamily: fonts.medium, fontSize: 14, color: c.muted },
+    segmentTextSelected: { color: c.onPrimary },
   });
 }

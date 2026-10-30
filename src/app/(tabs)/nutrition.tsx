@@ -1,16 +1,24 @@
-import { View } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { Text, View } from 'react-native';
 
-import { EmptyText, LargeHeader } from '@/components/ui';
+import { PageHeader } from '@/components/ui';
 import { useTheme } from '@/theme/settings';
 
 // Placeholder only: nutrition tracking is a later phase (SPEC.md 3.9).
+// Centred in the space as an empty state, so the tab does not read as broken.
 export default function NutritionScreen() {
-  const { styles } = useTheme();
+  const { styles, colors } = useTheme();
   return (
     <View style={styles.screen}>
-      <LargeHeader title="Nutrition" />
-      <View style={styles.content}>
-        <EmptyText>Nutrition tracking is coming in a later version.</EmptyText>
+      <PageHeader title="Nutrition" />
+      <View style={{ flex: 1, justifyContent: 'center', padding: 16 }}>
+        <View style={[styles.card, { alignItems: 'center', paddingVertical: 32 }]}>
+          <Ionicons name="nutrition-outline" size={32} color={colors.faint} />
+          <Text style={[styles.sectionTitle, { textAlign: 'center' }]}>Coming in a later version</Text>
+          <Text style={[styles.muted, { textAlign: 'center' }]}>
+            Nutrition tracking is planned once the workout side is finished.
+          </Text>
+        </View>
       </View>
     </View>
   );

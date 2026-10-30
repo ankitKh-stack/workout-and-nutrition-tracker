@@ -7,6 +7,7 @@ export default function WorkoutsLayout() {
       <Stack.Screen name="index" options={{ headerShown: false, title: 'Workouts' }} />
       <Stack.Screen name="day/[dayId]" options={{ title: '' }} />
       <Stack.Screen name="log" options={{ title: '' }} />
+      <Stack.Screen name="history" options={{ title: '' }} />
     </Stack>
   );
 }

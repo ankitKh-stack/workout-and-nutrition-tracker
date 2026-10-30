@@ -1,9 +1,10 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
-import { Button, EmptyText, ErrorView, InlineError, ListRow } from '@/components/ui';
+import { Button, Chevron, EmptyText, ErrorView, InlineError, ListRow } from '@/components/ui';
 import {
   countWorkoutSets,
   deleteDay,
@@ -15,15 +16,16 @@ import {
   startWorkout,
 } from '@/data/repository';
 import { confirmAsync } from '@/lib/dialogs';
-import { formatDateLong, formatTime, plural } from '@/lib/format';
+import { formatDateLong, formatTime, formatWeight, plural } from '@/lib/format';
 import { useFocusData } from '@/lib/useFocusData';
-import { useTheme } from '@/theme/settings';
+import { useSettings, useTheme } from '@/theme/settings';
 
 // Day detail (SPEC.md 3.3): the day's exercises plus start/finish workout,
 // rename, delete, and removing exercises.
 export default function DayDetailScreen() {
   const db = useSQLiteContext();
   const { styles, colors } = useTheme();
+  const { unit } = useSettings();
   const { dayId } = useLocalSearchParams<{ dayId: string }>();
   const { data: day, error, reload } = useFocusData(() => getDayDetail(db, dayId), [db, dayId]);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -61,18 +63,12 @@ export default function DayDetailScreen() {
     }
   }
 
-  async function onExercisePress(exerciseId: string) {
+  function onExercisePress(exerciseId: string) {
     if (!day) return;
     if (day.workout) return openLog(day.workout.id, exerciseId);
-    // Sets can only be logged inside a workout, so ask before starting one.
-    const ok = await confirmAsync(`Start a workout for ${day.name} now?`, '', 'Start');
-    if (!ok) return;
-    try {
-      const workoutId = await startWorkout(db, dayId);
-      openLog(workoutId, exerciseId);
-    } catch {
-      setActionError('Could not start the workout. Try again.');
-    }
+    // No workout running: show the exercise's history read-only. Workouts
+    // start only from the Start workout button.
+    router.push({ pathname: '/workouts/history', params: { exerciseId } });
   }
 
   async function onRemoveExercise(exerciseId: string, name: string) {
@@ -143,9 +139,9 @@ export default function DayDetailScreen() {
   }
 
   const status = day.workout
-    ? `Workout in progress — started ${formatTime(day.workout.startedAt)}`
+    ? `In progress · started ${formatTime(day.workout.startedAt)}`
     : day.lastWorkoutDate
-      ? `Last workout: ${formatDateLong(day.lastWorkoutDate)}`
+      ? `Last workout ${formatDateLong(day.lastWorkoutDate)}`
       : 'No workouts yet';
 
   return (
@@ -158,63 +154,103 @@ export default function DayDetailScreen() {
               accessibilityRole="button"
               accessibilityLabel="More"
               onPress={() => setMenuOpen((o) => !o)}
-              style={{ paddingHorizontal: 12, paddingVertical: 4 }}
+              style={{ paddingHorizontal: 12, paddingVertical: 6 }}
             >
-              <Text style={{ fontSize: 22, color: colors.primary }}>⋯</Text>
+              <Ionicons name="ellipsis-horizontal-circle-outline" size={24} color={colors.text} />
             </Pressable>
           ),
         }}
       />
       {menuOpen ? (
-        <View style={[styles.content, { borderBottomWidth: 1, borderColor: colors.border }]}>
-          <Button
-            label="Rename day"
-            onPress={() => {
-              setMenuOpen(false);
-              router.push({ pathname: '/name-day', params: { dayId } });
-            }}
-          />
-          <Button
-            label="Remove exercises"
-            disabled={day.exercises.length === 0}
-            onPress={() => {
-              setMenuOpen(false);
-              setRemoving(true);
-            }}
-          />
-          <Button label="Delete day" variant="danger" onPress={onDelete} />
+        <View style={[styles.content, { paddingTop: 4 }]}>
+          <View style={[styles.card, { padding: 8, gap: 4 }]}>
+            <Button
+              label="Rename day"
+              icon="create-outline"
+              variant="link"
+              style={{ alignItems: 'flex-start' }}
+              onPress={() => {
+                setMenuOpen(false);
+                router.push({ pathname: '/name-day', params: { dayId } });
+              }}
+            />
+            <Button
+              label="Remove exercises"
+              icon="remove-circle-outline"
+              variant="link"
+              style={{ alignItems: 'flex-start' }}
+              disabled={day.exercises.length === 0}
+              onPress={() => {
+                setMenuOpen(false);
+                setRemoving(true);
+              }}
+            />
+            <Button
+              label="Delete day"
+              icon="trash-outline"
+              variant="link"
+              style={{ alignItems: 'flex-start' }}
+              onPress={onDelete}
+            />
+          </View>
         </View>
       ) : null}
       {banner ? (
-        <View style={{ backgroundColor: colors.success, padding: 10 }}>
-          <Text style={{ color: '#fff', fontWeight: '600', textAlign: 'center' }}>{banner}</Text>
+        <View style={{ backgroundColor: colors.primary, paddingVertical: 10, paddingHorizontal: 16 }}>
+          <Text style={[styles.bodyStrong, { color: colors.onPrimary, textAlign: 'center' }]}>{banner}</Text>
         </View>
       ) : null}
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={[styles.muted, day.workout && { color: colors.success, fontWeight: '600' }]}>{status}</Text>
+        {/* The day at a glance: the workout running now, or how the last one went. */}
+        <View style={[styles.card, { flexDirection: 'row', alignItems: 'center' }]}>
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={[styles.label, day.workout && { color: colors.accent }]}>{status}</Text>
+            <Text style={[styles.title, styles.number]}>
+              {day.workout
+                ? formatWeight(day.workout.volume, unit)
+                : day.lastWorkoutVolume !== null
+                  ? formatWeight(day.lastWorkoutVolume, unit)
+                  : '—'}
+              <Text style={styles.small}> {unit} volume</Text>
+            </Text>
+          </View>
+          {day.workout ? (
+            <View style={{ alignItems: 'flex-end', gap: 2 }}>
+              <Text style={styles.label}>Sets so far</Text>
+              {/* Same count as the rows below, so the two always agree. */}
+              <Text style={[styles.title, styles.number]}>{day.exercises.reduce((n, e) => n + e.loggedSetCount, 0)}</Text>
+            </View>
+          ) : null}
+        </View>
         {actionError ? <InlineError>{actionError}</InlineError> : null}
         {removing ? (
           <View style={[styles.buttonRow, { alignItems: 'center' }]}>
-            <Text style={[styles.muted, { flex: 1 }]}>Tap Remove next to an exercise to delete it.</Text>
+            <Text style={[styles.muted, { flex: 1 }]}>Removing also deletes the sets logged on that exercise.</Text>
             <Button label="Done" compact onPress={() => setRemoving(false)} />
           </View>
         ) : null}
-        {day.exercises.length === 0 ? <EmptyText>No exercises yet. Add your first exercise.</EmptyText> : null}
+        {day.exercises.length === 0 ? (
+          <View style={styles.card}>
+            <Text style={styles.bodyStrong}>No exercises yet</Text>
+            <Text style={styles.muted}>Add the exercises you do on {day.name}, for example Bench press or Incline dumbbell press.</Text>
+          </View>
+        ) : null}
         {day.exercises.map((e) => {
           const parts: string[] = [];
           if (e.variationName.trim().toLowerCase() !== e.name.trim().toLowerCase()) parts.push(e.variationName);
           if (day.workout) parts.push(`${plural(e.loggedSetCount, 'set')} logged`);
+          else parts.push('Tap to see past sets');
           return (
             <ListRow
               key={e.id}
               title={e.name}
-              subtitle={parts.join(' · ') || undefined}
+              subtitle={parts.join(' · ')}
               onPress={removing ? undefined : () => onExercisePress(e.id)}
               right={
                 removing ? (
                   <Button label="Remove" variant="danger" compact onPress={() => onRemoveExercise(e.id, e.name)} />
                 ) : (
-                  <Text style={{ color: colors.muted, fontSize: 20 }}>›</Text>
+                  <Chevron />
                 )
               }
             />
@@ -222,16 +258,17 @@ export default function DayDetailScreen() {
         })}
         {!removing ? (
           <Button
-            label="+ Add exercise"
+            label="Add exercise"
+            icon="add"
             onPress={() => router.push({ pathname: '/add-exercise', params: { dayId } })}
           />
         ) : null}
       </ScrollView>
-      <View style={[styles.content, { borderTopWidth: 1, borderColor: colors.border }]}>
+      <View style={[styles.content, { paddingBottom: 12 }]}>
         {day.workout ? (
-          <Button label="Finish workout" variant="primary" onPress={onFinish} />
+          <Button label="Finish workout" icon="checkmark" variant="primary" onPress={onFinish} />
         ) : (
-          <Button label="Start workout" variant="primary" onPress={onStart} />
+          <Button label="Start workout" icon="play" variant="primary" onPress={onStart} />
         )}
       </View>
     </View>

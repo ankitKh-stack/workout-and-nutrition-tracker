@@ -1,23 +1,37 @@
-// Plain building blocks for the list-based screens. Colours come from the
-// active theme (light or dark); see src/theme.
-import type { ReactNode } from 'react';
+// Plain building blocks for the list-based screens. Colours and type come
+// from the active theme (see src/theme).
+import Ionicons from '@expo/vector-icons/Ionicons';
+import type { ComponentProps, ReactNode } from 'react';
 import { Pressable, Text, TextInput, View, type StyleProp, type TextInputProps, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { formatDayHeading } from '@/lib/format';
+import { fonts } from '@/theme/palette';
 import { useTheme } from '@/theme/settings';
+
+export type IconName = ComponentProps<typeof Ionicons>['name'];
 
 type ButtonProps = {
   label: string;
   onPress: () => void;
-  variant?: 'primary' | 'secondary' | 'danger' | 'link';
+  /** primary: the screen's one main action, an inverted pill. danger: outlined in the negative colour. quiet: a grey text action. */
+  variant?: 'primary' | 'secondary' | 'danger' | 'link' | 'quiet';
+  icon?: IconName;
   disabled?: boolean;
   style?: StyleProp<ViewStyle>;
   compact?: boolean;
 };
 
-export function Button({ label, onPress, variant = 'secondary', disabled, style, compact }: ButtonProps) {
-  const { styles } = useTheme();
+export function Button({ label, onPress, variant = 'secondary', icon, disabled, style, compact }: ButtonProps) {
+  const { styles, colors } = useTheme();
+  const textColor =
+    variant === 'primary'
+      ? colors.onPrimary
+      : variant === 'danger'
+        ? colors.negative
+        : variant === 'quiet'
+          ? colors.muted
+          : colors.text;
   return (
     <Pressable
       accessibilityRole="button"
@@ -29,21 +43,27 @@ export function Button({ label, onPress, variant = 'secondary', disabled, style,
         compact && styles.buttonCompact,
         variant === 'primary' && styles.buttonPrimary,
         variant === 'danger' && styles.buttonDanger,
-        variant === 'link' && styles.buttonLink,
+        (variant === 'link' || variant === 'quiet') && styles.buttonLink,
         disabled && styles.buttonDisabled,
         pressed && styles.pressed,
         style,
       ]}
     >
-      <Text
-        style={[
-          styles.buttonText,
-          (variant === 'primary' || variant === 'danger') && styles.buttonTextOnColor,
-          variant === 'link' && styles.buttonTextLink,
-        ]}
-      >
-        {label}
-      </Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        {icon ? <Ionicons name={icon} size={compact ? 16 : 18} color={textColor} /> : null}
+        <Text
+          style={[
+            styles.buttonText,
+            variant === 'primary' && styles.buttonTextPrimary,
+            variant === 'danger' && styles.buttonTextDanger,
+            variant === 'link' && styles.buttonTextLink,
+            variant === 'quiet' && { color: colors.muted, fontFamily: fonts.medium },
+            compact && { fontSize: 14 },
+          ]}
+        >
+          {label}
+        </Text>
+      </View>
     </Pressable>
   );
 }
@@ -51,26 +71,28 @@ export function Button({ label, onPress, variant = 'secondary', disabled, style,
 type ListRowProps = {
   title: string;
   subtitle?: string;
+  /** A line in the data hue under the title, e.g. "In progress · started 16:55". */
+  status?: string;
   onPress?: () => void;
   right?: ReactNode;
   disabled?: boolean;
   style?: StyleProp<ViewStyle>;
-  /** Small coloured label above the title, e.g. "IN PROGRESS". */
-  badge?: { label: string; color: string };
 };
 
-export function ListRow({ title, subtitle, onPress, right, disabled, style, badge }: ListRowProps) {
-  const { styles } = useTheme();
+export function ListRow({ title, subtitle, status, onPress, right, disabled, style }: ListRowProps) {
+  const { styles, colors } = useTheme();
   return (
     <Pressable
       accessibilityRole={onPress ? 'button' : undefined}
       onPress={onPress}
       disabled={disabled || !onPress}
-      style={({ pressed }) => [styles.row, pressed && styles.pressed, disabled && styles.buttonDisabled, style]}
+      style={({ pressed }) => [styles.row, pressed && onPress && styles.pressed, disabled && styles.buttonDisabled, style]}
     >
       <View style={styles.rowText}>
-        {badge ? <Text style={[styles.eyebrow, { color: badge.color }]}>{badge.label}</Text> : null}
-        <Text style={styles.rowTitle}>{title}</Text>
+        <Text style={styles.rowTitle} numberOfLines={1}>
+          {title}
+        </Text>
+        {status ? <Text style={[styles.rowSubtitle, { color: colors.accent }]}>{status}</Text> : null}
         {subtitle ? <Text style={styles.rowSubtitle}>{subtitle}</Text> : null}
       </View>
       {right}
@@ -78,12 +100,18 @@ export function ListRow({ title, subtitle, onPress, right, disabled, style, badg
   );
 }
 
+/** A trailing chevron for rows that open another screen. */
+export function Chevron() {
+  const { colors } = useTheme();
+  return <Ionicons name="chevron-forward" size={18} color={colors.faint} />;
+}
+
 export function Field(props: TextInputProps & { invalid?: boolean }) {
   const { styles, colors } = useTheme();
   const { invalid, style, ...rest } = props;
   return (
     <TextInput
-      placeholderTextColor={colors.muted}
+      placeholderTextColor={colors.faint}
       {...rest}
       style={[styles.field, invalid && styles.fieldInvalid, style]}
     />
@@ -110,7 +138,7 @@ export function InlineError({ children }: { children: ReactNode }) {
   return <Text style={styles.inlineError}>{children}</Text>;
 }
 
-/** Pill toggle in the style of the reference screenshots ("Consumed | Remaining"). */
+/** Pill toggle; the selected option is an inverted pill, as in the reference screenshots. */
 export function Segmented<T extends string>({
   options,
   value,
@@ -143,17 +171,19 @@ export function Segmented<T extends string>({
   );
 }
 
-/** Large page title with today's date above it, used on tab root screens. */
-export function LargeHeader({ title, right }: { title: string; right?: ReactNode }) {
+/** The screen's title (its h1) on tab root screens, with today's date in a grey line under it. */
+export function PageHeader({ title, subtitle, right }: { title: string; subtitle?: string; right?: ReactNode }) {
   const { styles } = useTheme();
   const insets = useSafeAreaInsets();
   return (
-    <View style={{ paddingTop: insets.top + 12, paddingHorizontal: 16, paddingBottom: 4 }}>
-      <Text style={styles.eyebrow}>{formatDayHeading(new Date())}</Text>
-      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        <Text style={[styles.largeTitle, { flex: 1 }]}>{title}</Text>
-        {right}
+    <View style={{ paddingTop: insets.top + 16, paddingHorizontal: 16, paddingBottom: 4, flexDirection: 'row', alignItems: 'flex-end' }}>
+      <View style={{ flex: 1 }}>
+        <Text role="heading" aria-level={1} style={styles.pageTitle}>
+          {title}
+        </Text>
+        <Text style={styles.pageSubtitle}>{subtitle ?? formatDayHeading(new Date())}</Text>
       </View>
+      {right}
     </View>
   );
 }

@@ -120,7 +120,9 @@ export type DayDetail = {
   id: string;
   name: string;
   lastWorkoutDate: string | null;
-  workout: { id: string; startedAt: string } | null;
+  workout: { id: string; startedAt: string; volume: number } | null;
+  /** Volume (kg) of the last completed workout of this day. */
+  lastWorkoutVolume: number | null;
   exercises: {
     id: string;
     name: string;
@@ -152,8 +154,8 @@ export async function getDayDetail(db: SQLiteDatabase, dayId: string): Promise<D
   );
   if (!day) return null;
 
-  const last = await db.getFirstAsync<{ date: string }>(
-    "SELECT date FROM workout WHERE day_id = ? AND status = 'completed' ORDER BY started_at DESC LIMIT 1",
+  const last = await db.getFirstAsync<{ id: string; date: string }>(
+    "SELECT id, date FROM workout WHERE day_id = ? AND status = 'completed' ORDER BY started_at DESC LIMIT 1",
     dayId,
   );
   const workout = await getInProgressWorkout(db, dayId);
@@ -187,7 +189,14 @@ export async function getDayDetail(db: SQLiteDatabase, dayId: string): Promise<D
     id: day.id,
     name: day.name,
     lastWorkoutDate: last?.date ?? null,
-    workout: workout ? { id: workout.id, startedAt: workout.started_at } : null,
+    lastWorkoutVolume: last ? await computeWorkoutVolume(db, last.id) : null,
+    workout: workout
+      ? {
+          id: workout.id,
+          startedAt: workout.started_at,
+          volume: await computeWorkoutVolume(db, workout.id),
+        }
+      : null,
     exercises: exercises.map((e) => ({
       id: e.id,
       name: e.name,
@@ -395,26 +404,9 @@ async function normalSets(db: SQLiteDatabase, workoutId: string, variationId: st
   );
 }
 
-export async function getLoggingData(
-  db: SQLiteDatabase,
-  workoutId: string,
-  exerciseId: string,
-): Promise<LoggingData | null> {
-  const exercise = await db.getFirstAsync<{ name: string; day_id: string }>(
-    'SELECT name, day_id FROM exercise WHERE id = ?',
-    exerciseId,
-  );
-  const workout = await db.getFirstAsync<{ status: 'in_progress' | 'completed' }>(
-    'SELECT status FROM workout WHERE id = ?',
-    workoutId,
-  );
-  if (!exercise || !workout) return null;
-
-  const selectedId = await selectedVariationFor(db, workoutId, exerciseId);
-  const selectedVar = await db.getFirstAsync<{ name: string }>('SELECT name FROM variation WHERE id = ?', selectedId);
-
-  // Normal sets of the selected variation, each followed by its intensifier rows.
-  const sets = await normalSets(db, workoutId, selectedId);
+/** Normal sets of one variation in one workout, numbered, each with its intensifier rows. */
+async function setsWithIntensifiers(db: SQLiteDatabase, workoutId: string, variationId: string): Promise<NormalSetRow[]> {
+  const sets = await normalSets(db, workoutId, variationId);
   const intensifiers = await db.getAllAsync<{
     id: string;
     type: IntensifierType;
@@ -434,8 +426,48 @@ export async function getLoggingData(
      LEFT JOIN variation pv ON pv.id = c.variation_id
      WHERE p.workout_id = ? AND p.variation_id = ?
      ORDER BY i.position ASC`,
-    workoutId, selectedId,
+    workoutId, variationId,
   );
+  return sets.map((s, index) => ({
+    setId: s.id,
+    number: index + 1,
+    reps: s.reps,
+    weight: s.weight,
+    intensifiers: intensifiers
+      .filter((i) => i.parent_set_id === s.id)
+      .map((i) => ({
+        intensifierId: i.id,
+        type: i.type,
+        childSetId: i.child_id,
+        reps: i.reps,
+        weight: i.weight,
+        partnerLabel:
+          i.type === 'superset' && i.partner_exercise
+            ? variationLabel(i.partner_exercise, i.partner_variation ?? i.partner_exercise)
+            : null,
+      })),
+  }));
+}
+
+export async function getLoggingData(
+  db: SQLiteDatabase,
+  workoutId: string,
+  exerciseId: string,
+): Promise<LoggingData | null> {
+  const exercise = await db.getFirstAsync<{ name: string; day_id: string }>(
+    'SELECT name, day_id FROM exercise WHERE id = ?',
+    exerciseId,
+  );
+  const workout = await db.getFirstAsync<{ status: 'in_progress' | 'completed' }>(
+    'SELECT status FROM workout WHERE id = ?',
+    workoutId,
+  );
+  if (!exercise || !workout) return null;
+
+  const selectedId = await selectedVariationFor(db, workoutId, exerciseId);
+  const selectedVar = await db.getFirstAsync<{ name: string }>('SELECT name FROM variation WHERE id = ?', selectedId);
+
+  const sets = await setsWithIntensifiers(db, workoutId, selectedId);
 
   // Superset partner sets started from another exercise that landed on this one.
   const partners = await db.getAllAsync<{
@@ -503,27 +535,70 @@ export async function getLoggingData(
     selectedVariationName: selectedVar?.name ?? exercise.name,
     lastTime,
     alsoLogged,
-    sets: sets.map((s, index) => ({
-      setId: s.id,
-      number: index + 1,
-      reps: s.reps,
-      weight: s.weight,
-      intensifiers: intensifiers
-        .filter((i) => i.parent_set_id === s.id)
-        .map((i) => ({
-          intensifierId: i.id,
-          type: i.type,
-          childSetId: i.child_id,
-          reps: i.reps,
-          weight: i.weight,
-          partnerLabel:
-            i.type === 'superset' && i.partner_exercise
-              ? variationLabel(i.partner_exercise, i.partner_variation ?? i.partner_exercise)
-              : null,
-        })),
-    })),
+    sets,
     partnerSets,
   };
+}
+
+export type HistoryData = {
+  exerciseName: string;
+  selectedVariationId: string;
+  variations: { id: string; name: string }[];
+  /** Most recent first. */
+  workouts: { workoutId: string; date: string; volume: number; sets: NormalSetRow[] }[];
+};
+
+const HISTORY_LIMIT = 5;
+
+/**
+ * Read-only history of one exercise: the last few completed workouts that
+ * logged sets on the chosen variation (default: the exercise's current
+ * variation). Opening it never starts a workout or changes any data.
+ */
+export async function getExerciseHistory(
+  db: SQLiteDatabase,
+  exerciseId: string,
+  variationId: string | null,
+): Promise<HistoryData | null> {
+  const exercise = await db.getFirstAsync<{ name: string; default_variation_id: string }>(
+    'SELECT name, default_variation_id FROM exercise WHERE id = ?',
+    exerciseId,
+  );
+  if (!exercise) return null;
+  const variations = await db.getAllAsync<{ id: string; name: string }>(
+    'SELECT id, name FROM variation WHERE exercise_id = ? ORDER BY created_at ASC',
+    exerciseId,
+  );
+  const selectedId =
+    variationId && variations.some((v) => v.id === variationId) ? variationId : exercise.default_variation_id;
+
+  const recent = await db.getAllAsync<{ id: string; date: string }>(
+    `SELECT w.id, w.date FROM workout w
+     WHERE w.status = 'completed' AND EXISTS (
+       SELECT 1 FROM workout_set s
+       WHERE s.workout_id = w.id AND s.variation_id = ? AND s.intensifier_id IS NULL)
+     ORDER BY w.started_at DESC LIMIT ${HISTORY_LIMIT}`,
+    selectedId,
+  );
+  const workouts = [];
+  for (const w of recent) {
+    const sets = await setsWithIntensifiers(db, w.id, selectedId);
+    // Volume of this variation only, by the same rules as a whole workout (SPEC.md 5.7).
+    // Superset rows belong to the partner exercise, so they are left out here.
+    const volume = workoutVolume(
+      sets.flatMap((s) => [
+        { reps: s.reps, weight: s.weight, isPartial: false, parentWeight: null },
+        ...s.intensifiers.filter((i) => i.type !== 'superset').map((i) => ({
+          reps: i.reps,
+          weight: i.weight,
+          isPartial: i.type === 'partial',
+          parentWeight: s.weight,
+        })),
+      ]),
+    );
+    workouts.push({ workoutId: w.id, date: w.date, volume, sets });
+  }
+  return { exerciseName: exercise.name, selectedVariationId: selectedId, variations, workouts };
 }
 
 /** Appends an empty normal set for a variation in a workout. */
@@ -798,6 +873,20 @@ export async function getCalendarWorkouts(db: SQLiteDatabase): Promise<CalendarW
 
 // ---------------------------------------------------------------------------
 // Settings
+
+export type DataSummary = { days: number; exercises: number; workouts: number; sets: number };
+
+/** What is stored on the phone, for the More screen. */
+export async function getDataSummary(db: SQLiteDatabase): Promise<DataSummary> {
+  const row = await db.getFirstAsync<DataSummary>(
+    `SELECT
+       (SELECT COUNT(*) FROM day_basket) AS days,
+       (SELECT COUNT(*) FROM exercise) AS exercises,
+       (SELECT COUNT(*) FROM workout WHERE status = 'completed') AS workouts,
+       (SELECT COUNT(*) FROM workout_set s JOIN workout w ON w.id = s.workout_id WHERE w.status = 'completed') AS sets`,
+  );
+  return row ?? { days: 0, exercises: 0, workouts: 0, sets: 0 };
+}
 
 export type WeightUnit = 'kg' | 'lb';
 

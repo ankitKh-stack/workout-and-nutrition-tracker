@@ -1,3 +1,4 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useState } from 'react';
@@ -58,9 +59,7 @@ export default function SwapVariationScreen() {
           onPress={() => choose(v.id)}
           right={
             v.id === data.selectedVariationId ? (
-              <Text style={{ color: colors.primary, fontSize: 18 }} accessibilityLabel="Selected">
-                ✓
-              </Text>
+              <Ionicons name="checkmark-circle" size={22} color={colors.text} accessibilityLabel="Selected" />
             ) : null
           }
         />
