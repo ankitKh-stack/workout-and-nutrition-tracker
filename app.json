@@ -10,6 +10,7 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.ankitkh.workouttracker",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -26,6 +27,16 @@
       "expo-sqlite",
       "expo-font"
     ],
-    "scheme": "wntracker"
+    "scheme": "wntracker",
+    "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "projectId": "5edcd18e-07d2-4b28-9740-fc0f8e83fc7b"
+      }
+    }
   }
 }
