@@ -2,8 +2,9 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 
+import { KeyboardAwareScroll } from '@/components/KeyboardAwareScroll';
 import { Button, EmptyText, ErrorView, Field, InlineError, ListRow } from '@/components/ui';
 import { createVariationAndSwap, getSwapData, swapVariation, ValidationError } from '@/data/repository';
 import { formatDateLong } from '@/lib/format';
@@ -49,7 +50,7 @@ export default function SwapVariationScreen() {
   }
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+    <KeyboardAwareScroll style={styles.screen} contentContainerStyle={styles.content}>
       <Stack.Screen options={{ title: `Swap variation — ${data.exerciseName}` }} />
       {data.variations.map((v) => (
         <ListRow
@@ -85,6 +86,6 @@ export default function SwapVariationScreen() {
         <Button label="Add" variant="primary" onPress={create} disabled={!canAdd} />
       </View>
       <Button label="Cancel" onPress={() => router.back()} />
-    </ScrollView>
+    </KeyboardAwareScroll>
   );
 }

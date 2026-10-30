@@ -5,6 +5,7 @@ import type { ComponentProps, ReactNode } from 'react';
 import { Pressable, Text, TextInput, View, type StyleProp, type TextInputProps, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useEnsureVisible } from '@/components/KeyboardAwareScroll';
 import { formatDayHeading } from '@/lib/format';
 import { fonts } from '@/theme/palette';
 import { useTheme } from '@/theme/settings';
@@ -108,11 +109,17 @@ export function Chevron() {
 
 export function Field(props: TextInputProps & { invalid?: boolean }) {
   const { styles, colors } = useTheme();
-  const { invalid, style, ...rest } = props;
+  const { invalid, style, onFocus, ...rest } = props;
+  const ensureVisible = useEnsureVisible();
   return (
     <TextInput
       placeholderTextColor={colors.faint}
       {...rest}
+      onFocus={(e) => {
+        onFocus?.(e);
+        // Inside a KeyboardAwareScroll, bring this field above the keyboard.
+        ensureVisible();
+      }}
       style={[styles.field, invalid && styles.fieldInvalid, style]}
     />
   );

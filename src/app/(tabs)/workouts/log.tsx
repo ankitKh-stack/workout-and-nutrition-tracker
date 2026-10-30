@@ -2,8 +2,9 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useRef, useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
+import { KeyboardAwareScroll } from '@/components/KeyboardAwareScroll';
 import { SetField } from '@/components/SetField';
 import { Button, EmptyText, ErrorView } from '@/components/ui';
 import {
@@ -126,7 +127,7 @@ export default function LogScreen() {
           {failedWrites.length > 0 ? <Button label="Retry" compact onPress={retryWrites} /> : null}
         </View>
       ) : null}
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <KeyboardAwareScroll contentContainerStyle={styles.content}>
         <View style={styles.card}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <View style={{ flex: 1, gap: 2 }}>
@@ -192,7 +193,7 @@ export default function LogScreen() {
             })
           }
         />
-      </ScrollView>
+      </KeyboardAwareScroll>
     </View>
   );
 }

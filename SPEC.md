@@ -63,7 +63,7 @@ These terms are used throughout the spec. They are defined for a reader who has 
 
 **What the user sees:**
 - Screen title: "Workouts".
-- A vertical list, one row per day basket. A day with a workout in progress is listed first and highlighted with a green outline and the label "IN PROGRESS · STARTED 18:05" above its name, so the user can get back to it in one tap. The other days follow in the order they were created (oldest first).
+- A vertical list, one row per day basket. A day with a workout in progress is listed first and highlighted with an outline in the data colour and the line "In progress · started 18:05" under its name, so the user can get back to it in one tap. The other days follow with the most recently changed day on top: any change inside a day (renaming it, adding or removing an exercise, swapping or creating a variation, starting or finishing a workout, adding, editing or removing a set or intensifier) moves it to the top. A newly created day also starts at the top.
 - Each row shows: the day's name (for example "Push Day"); a second line with the number of exercises ("4 exercises") and the date of the last completed workout of this day ("Last workout: 28 Oct 2026") or "No workouts yet".
 - A button at the bottom of the list (or top-right of the header): "+ New day".
 
@@ -81,7 +81,7 @@ These terms are used throughout the spec. They are defined for a reader who has 
 
 **Error state:** If reading from storage fails, show "Could not load your days." with a "Try again" button that re-runs the read. (Reason: storage failure is rare but should never show a blank screen that looks like data loss.)
 
-**Technical:** On focus, query all `DayBasket` records ordered by `createdAt` ascending. For each, count its `Exercise` records and find the latest `Workout` with `status = completed` (by `startedAt`) and whether one with `status = in_progress` exists.
+**Technical:** On focus, query all `DayBasket` records ordered by: in-progress workout first, then `lastChangedAt` descending, where `lastChangedAt` is the latest `updatedAt` of the day, its exercises, its workouts and the sets in those workouts. Deleting an exercise stamps the day, and removing a set or intensifier stamps its workout, so deletions also count as changes. For each, count its `Exercise` records and find the latest `Workout` with `status = completed` (by `startedAt`) and whether one with `status = in_progress` exists.
 
 ---
 
@@ -221,6 +221,7 @@ These terms are used throughout the spec. They are defined for a reader who has 
 
 **Actions:**
 - "+ Add set" → appends a new empty normal set row for the selected variation. The new row's Reps field gets focus.
+- Focusing a field while the keyboard is open, or opening the keyboard → the screen scrolls so the field sits just above the keyboard, and extra space equal to the keyboard's height is added at the end of the list so every row can be scrolled into view. (Reason: on Android the app is drawn edge to edge, so the keyboard otherwise covers the lower fields.)
 - Typing in a field → the value is saved to storage within 500 ms of the last keystroke, and again when the field loses focus or the user leaves the screen. (Reason: the prototype must survive an app restart at any moment, including mid-workout.)
 - "+ Intensifier" → opens the Intensifier picker (3.6) for that set.
 - "Remove" on a normal set → removes the set and every intensifier row attached to it, after a confirmation "Remove Set 2 and its 1 intensifier?" when it has intensifiers; with no intensifiers it is removed immediately. Remaining sets renumber.

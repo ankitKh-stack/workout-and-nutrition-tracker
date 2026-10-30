@@ -30,19 +30,33 @@ export type DaySummary = {
   lastWorkoutDate: string | null;
   /** Start time of the day's in-progress workout, or null when none is running. */
   inProgressSince: string | null;
+  /** Latest change anywhere inside the day (ISO timestamp); used for ordering. */
+  lastChangedAt: string;
 };
 
-/** Days with a workout in progress come first, then the rest in creation order. */
+/**
+ * Days with a workout in progress come first; the rest follow with the most
+ * recently changed day on top. "Changed" is the latest timestamp written
+ * anywhere inside the day: the day itself (rename), its exercises (add, swap),
+ * its workouts (start, finish, remove a set) and every set (add, edit).
+ */
 export async function listDays(db: SQLiteDatabase): Promise<DaySummary[]> {
   return db.getAllAsync<DaySummary>(
     `SELECT d.id, d.name,
+       MAX(
+         d.updated_at,
+         COALESCE((SELECT MAX(e.updated_at) FROM exercise e WHERE e.day_id = d.id), ''),
+         COALESCE((SELECT MAX(w.updated_at) FROM workout w WHERE w.day_id = d.id), ''),
+         COALESCE((SELECT MAX(s.updated_at) FROM workout_set s JOIN workout w ON w.id = s.workout_id
+                   WHERE w.day_id = d.id), '')
+       ) AS lastChangedAt,
        (SELECT COUNT(*) FROM exercise e WHERE e.day_id = d.id) AS exerciseCount,
        (SELECT w.date FROM workout w WHERE w.day_id = d.id AND w.status = 'completed'
           ORDER BY w.started_at DESC LIMIT 1) AS lastWorkoutDate,
        (SELECT w.started_at FROM workout w WHERE w.day_id = d.id AND w.status = 'in_progress'
           LIMIT 1) AS inProgressSince
      FROM day_basket d
-     ORDER BY (inProgressSince IS NULL) ASC, d.created_at ASC`,
+     ORDER BY (inProgressSince IS NULL) ASC, lastChangedAt DESC, d.created_at ASC`,
   );
 }
 
@@ -253,6 +267,11 @@ export async function getExerciseDeletionCounts(
  * it. Volumes of past workouts are computed on read, so the calendar updates.
  */
 export async function deleteExercise(db: SQLiteDatabase, exerciseId: string): Promise<void> {
+  // Removing an exercise counts as a change to its day (for the day order on Home).
+  await db.runAsync(
+    'UPDATE day_basket SET updated_at = ? WHERE id = (SELECT day_id FROM exercise WHERE id = ?)',
+    now(), exerciseId,
+  );
   const exerciseSets = `SELECT s.id FROM workout_set s JOIN variation v ON v.id = s.variation_id WHERE v.exercise_id = ?`;
   const doomedIntensifiers = `SELECT id FROM intensifier WHERE parent_set_id IN (${exerciseSets}) OR partner_exercise_id = ?`;
   await db.withTransactionAsync(async () => {
@@ -640,6 +659,11 @@ export async function countIntensifiers(db: SQLiteDatabase, setId: string): Prom
 /** Removes a normal set together with its intensifiers and their rows. */
 export async function removeSet(db: SQLiteDatabase, setId: string): Promise<void> {
   await db.withTransactionAsync(async () => {
+    // Stamp the workout so the day counts as changed once the set is gone.
+    await db.runAsync(
+      'UPDATE workout SET updated_at = ? WHERE id = (SELECT workout_id FROM workout_set WHERE id = ?)',
+      now(), setId,
+    );
     await db.runAsync(
       'DELETE FROM workout_set WHERE intensifier_id IN (SELECT id FROM intensifier WHERE parent_set_id = ?)',
       setId,
@@ -651,6 +675,10 @@ export async function removeSet(db: SQLiteDatabase, setId: string): Promise<void
 
 export async function removeIntensifier(db: SQLiteDatabase, intensifierId: string): Promise<void> {
   await db.withTransactionAsync(async () => {
+    await db.runAsync(
+      'UPDATE workout SET updated_at = ? WHERE id = (SELECT workout_id FROM intensifier WHERE id = ?)',
+      now(), intensifierId,
+    );
     await db.runAsync('DELETE FROM workout_set WHERE intensifier_id = ?', intensifierId);
     await db.runAsync('DELETE FROM intensifier WHERE id = ?', intensifierId);
   });
