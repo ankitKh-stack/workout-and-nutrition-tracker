@@ -16,8 +16,6 @@ export function parseLocalDate(s: string): Date {
   return new Date(y, m - 1, d);
 }
 
-export const monthShort = (monthIndex: number) => MONTHS[monthIndex];
-
 /** "October" */
 export const monthLong = (monthIndex: number) => MONTHS_LONG[monthIndex];
 

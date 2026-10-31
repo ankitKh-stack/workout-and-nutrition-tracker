@@ -15,18 +15,14 @@ import {
   removeSet,
   swapVariation,
   type IntensifierRow,
-  type IntensifierType,
   type NormalSetRow,
 } from '@/data/repository';
 import { confirmAsync } from '@/lib/dialogs';
 import { formatDateShort, formatNumber, formatWeight, plural, toDisplayWeight } from '@/lib/format';
 import { useFocusData } from '@/lib/useFocusData';
 import { drainWrites, requestFocus, takeFocusRequest } from '@/lib/writeQueue';
-import { fonts, type Palette } from '@/theme/palette';
+import { fonts } from '@/theme/palette';
 import { useSettings, useTheme } from '@/theme/settings';
-
-/** Each kind of intensifier has its own mark: a 3px edge and its label in the kind's colour. */
-const intensifierColor = (type: IntensifierType, c: Palette) => c.kinds[type];
 
 // Exercise logging (SPEC.md 3.5)
 export default function LogScreen() {
@@ -269,7 +265,8 @@ function SetBlock({ set, last, focusId, onSaveError, onAddIntensifier, onRemove,
         onSaveError={onSaveError}
       />
       {set.intensifiers.map((i) => {
-        const color = intensifierColor(i.type, colors);
+        // Each kind has its own mark: a 3px edge and its label in the kind's colour.
+        const color = colors.kinds[i.type];
         const label = i.type === 'drop' ? 'Drop set' : i.type === 'partial' ? 'Partial reps' : `Superset: ${i.partnerLabel}`;
         return (
           <View key={i.intensifierId} style={[{ marginLeft: 12, paddingLeft: 12, gap: 6 }, edge(color)]}>

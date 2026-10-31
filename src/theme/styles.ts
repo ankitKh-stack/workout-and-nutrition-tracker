@@ -47,7 +47,6 @@ export function makeStyles(c: Palette) {
     buttonText: { fontFamily: fonts.semibold, fontSize: 15, color: c.text },
     buttonTextPrimary: { color: c.onPrimary },
     buttonTextDanger: { color: c.negative },
-    buttonTextLink: { color: c.text },
     pressed: { opacity: 0.65 },
 
     row: {

@@ -10,7 +10,8 @@ import {
   type VolumeSetInput,
   type WorkoutProgress,
 } from '@/domain/progress';
-import { localDateString } from '@/lib/format';
+import { localDateString, type Unit } from '@/lib/format';
+import type { ThemeName } from '@/theme/palette';
 
 export type IntensifierType = 'drop' | 'partial' | 'superset';
 
@@ -390,12 +391,12 @@ export async function computeWorkoutVolume(db: SQLiteDatabase, workoutId: string
   return workoutVolume(rows.map(toVolumeInput));
 }
 
+/** Volume is not stored: every screen computes it from the sets, so it always matches them. */
 export async function finishWorkout(db: SQLiteDatabase, workoutId: string): Promise<void> {
-  const volume = await computeWorkoutVolume(db, workoutId);
   const t = now();
   await db.runAsync(
-    "UPDATE workout SET status = 'completed', finished_at = ?, total_volume = ?, updated_at = ? WHERE id = ?",
-    t, volume, t, workoutId,
+    "UPDATE workout SET status = 'completed', finished_at = ?, updated_at = ? WHERE id = ?",
+    t, t, workoutId,
   );
 }
 
@@ -974,9 +975,7 @@ export async function getDataSummary(db: SQLiteDatabase): Promise<DataSummary> {
   return row ?? { days: 0, exercises: 0, workouts: 0, sets: 0 };
 }
 
-export type WeightUnit = 'kg' | 'lb';
-
-export type StoredSettings = { theme: 'light' | 'dark' | null; unit: WeightUnit | null };
+export type StoredSettings = { theme: ThemeName | null; unit: Unit | null };
 
 export async function getSettings(db: SQLiteDatabase): Promise<StoredSettings> {
   const rows = await db.getAllAsync<{ key: string; value: string }>('SELECT key, value FROM settings');

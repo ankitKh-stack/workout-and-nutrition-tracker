@@ -58,7 +58,6 @@ export function Button({ label, onPress, variant = 'secondary', icon, disabled, 
             styles.buttonText,
             variant === 'primary' && styles.buttonTextPrimary,
             variant === 'danger' && styles.buttonTextDanger,
-            variant === 'link' && styles.buttonTextLink,
             variant === 'quiet' && { color: colors.muted, fontFamily: fonts.medium },
             compact && { fontSize: 14 },
           ]}

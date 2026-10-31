@@ -88,10 +88,8 @@ export default function CalendarScreen() {
     setSelected(null);
   };
 
-  const shade = (l: ShadeLevel) => colors.shades[l];
   const levelFor = (date: string): ShadeLevel =>
     (byDate.get(date) ?? []).reduce<ShadeLevel>((acc, w) => darkerLevel(acc, w.progress.level), 'none');
-  // Day numbers need to stay readable on the strongest shades.
   // Day numbers stay readable (4.5:1) on every shade: black on the bright limes in
   // dark mode, white on the darkest green in light mode.
   const numberColor = (l: ShadeLevel) => {
@@ -172,7 +170,7 @@ export default function CalendarScreen() {
                       borderRadius: 8,
                       alignItems: 'center',
                       justifyContent: 'center',
-                      backgroundColor: shade(level),
+                      backgroundColor: colors.shades[level],
                       opacity: future ? 0.35 : 1,
                       borderWidth: 2,
                       borderColor: selected === date ? colors.text : 'transparent',
@@ -193,7 +191,7 @@ export default function CalendarScreen() {
               <View
                 key={String(l)}
                 accessibilityLabel={levelName(l)}
-                style={{ width: 14, height: 14, borderRadius: 3, backgroundColor: shade(l) }}
+                style={{ width: 14, height: 14, borderRadius: 3, backgroundColor: colors.shades[l] }}
               />
             ))}
             <Text style={styles.muted}>More</Text>
@@ -217,7 +215,7 @@ export default function CalendarScreen() {
                   <View key={w.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                     <View
                       accessibilityLabel={levelName(w.progress.level)}
-                      style={{ width: 36, height: 36, borderRadius: 8, backgroundColor: shade(w.progress.level) }}
+                      style={{ width: 36, height: 36, borderRadius: 8, backgroundColor: colors.shades[w.progress.level] }}
                     />
                     <View style={{ flex: 1, gap: 1 }}>
                       <Text style={styles.bodyStrong}>{w.dayName}</Text>

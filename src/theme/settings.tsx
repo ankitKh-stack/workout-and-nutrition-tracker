@@ -2,15 +2,16 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Appearance } from 'react-native';
 
-import { getSettings, saveSetting, type WeightUnit } from '@/data/repository';
+import { getSettings, saveSetting } from '@/data/repository';
+import type { Unit } from '@/lib/format';
 import { makeStyles } from '@/theme/styles';
 import { palettes, type Palette, type ThemeName } from '@/theme/palette';
 
 type SettingsValue = {
   theme: ThemeName;
-  unit: WeightUnit;
+  unit: Unit;
   setTheme: (theme: ThemeName) => void;
-  setUnit: (unit: WeightUnit) => void;
+  setUnit: (unit: Unit) => void;
 };
 
 const SettingsContext = createContext<SettingsValue | null>(null);
@@ -24,7 +25,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const db = useSQLiteContext();
   const [loaded, setLoaded] = useState(false);
   const [theme, setThemeState] = useState<ThemeName>(Appearance.getColorScheme() === 'dark' ? 'dark' : 'light');
-  const [unit, setUnitState] = useState<WeightUnit>('kg');
+  const [unit, setUnitState] = useState<Unit>('kg');
 
   useEffect(() => {
     getSettings(db)
@@ -44,7 +45,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     [db],
   );
   const setUnit = useCallback(
-    (u: WeightUnit) => {
+    (u: Unit) => {
       setUnitState(u);
       saveSetting(db, 'unit', u).catch((e) => console.warn(e));
     },

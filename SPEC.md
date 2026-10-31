@@ -161,7 +161,7 @@ These terms are used throughout the spec. They are defined for a reader who has 
 **Technical:**
 - Data: the `DayBasket`, its `Exercise` records ordered by `position`, and the day's `Workout` with `status = in_progress` if any (at most one per day).
 - Start workout inserts `Workout { id, dayId, date: today as local YYYY-MM-DD, startedAt: now, finishedAt: null, status: in_progress }`.
-- Finish workout sets `status = completed`, `finishedAt = now`, and stores `totalVolume` computed as in section 5.7.
+- Finish workout sets `status = completed` and `finishedAt = now`. Volume is not stored; it is computed from the sets whenever it is shown (section 5.7).
 - Delete day runs one transaction that deletes, in order: `Set` and `Intensifier` records of the day's workouts, the day's `Workout` records, `Variation` records of the day's exercises, the day's `Exercise` records, then the `DayBasket`.
 
 ---
@@ -529,7 +529,7 @@ Deleting an Exercise (3.3 "Remove exercises") deletes, in one transaction: inten
 - `startedAt`, `finishedAt` — timestamps; `finishedAt` is empty while in progress.
 - `status` — `in_progress` or `completed`. At most one `in_progress` workout per DayBasket.
 - `selectedVariations` — a map of `exerciseId → variationId` recording which variation is currently selected for each exercise in this workout, so the logging screen restores the right variation after a restart.
-- `totalVolume` — number, written when the workout is completed (section 5.7); may be recomputed at any time from its sets.
+- `totalVolume` — no longer written or read; volume is always computed from the workout's sets (section 5.7). The column stays in the database so existing data needs no migration.
 
 Relation: a Workout belongs to exactly one DayBasket and has many Sets and Intensifiers; only `completed` workouts appear on the calendar and in "Last time".
 
