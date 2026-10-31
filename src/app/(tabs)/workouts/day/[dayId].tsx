@@ -4,6 +4,7 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
+import { ReorderableList } from '@/components/ReorderableList';
 import { Button, Chevron, EmptyText, ErrorView, InlineError, ListRow } from '@/components/ui';
 import {
   countWorkoutSets,
@@ -13,6 +14,7 @@ import {
   getDayDeletionCounts,
   getDayDetail,
   getExerciseDeletionCounts,
+  reorderExercises,
   startWorkout,
 } from '@/data/repository';
 import { confirmAsync } from '@/lib/dialogs';
@@ -21,7 +23,8 @@ import { useFocusData } from '@/lib/useFocusData';
 import { useSettings, useTheme } from '@/theme/settings';
 
 // Day detail (SPEC.md 3.3): the day's exercises plus start/finish workout,
-// rename, delete, and removing exercises.
+// rename, delete, renaming and removing exercises, and holding an exercise to
+// drag it into a new order.
 export default function DayDetailScreen() {
   const db = useSQLiteContext();
   const { styles, colors } = useTheme();
@@ -29,7 +32,9 @@ export default function DayDetailScreen() {
   const { dayId } = useLocalSearchParams<{ dayId: string }>();
   const { data: day, error, reload } = useFocusData(() => getDayDetail(db, dayId), [db, dayId]);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [removing, setRemoving] = useState(false);
+  // Remove or rename mode: each exercise row shows that action instead of opening.
+  const [mode, setMode] = useState<'remove' | 'rename' | null>(null);
+  const [dragging, setDragging] = useState(false);
   const [banner, setBanner] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -175,6 +180,17 @@ export default function DayDetailScreen() {
               }}
             />
             <Button
+              label="Rename exercises"
+              icon="pencil-outline"
+              variant="link"
+              style={{ alignItems: 'flex-start' }}
+              disabled={day.exercises.length === 0}
+              onPress={() => {
+                setMenuOpen(false);
+                setMode('rename');
+              }}
+            />
+            <Button
               label="Remove exercises"
               icon="remove-circle-outline"
               variant="link"
@@ -182,7 +198,7 @@ export default function DayDetailScreen() {
               disabled={day.exercises.length === 0}
               onPress={() => {
                 setMenuOpen(false);
-                setRemoving(true);
+                setMode('remove');
               }}
             />
             <Button
@@ -200,7 +216,7 @@ export default function DayDetailScreen() {
           <Text style={[styles.bodyStrong, { color: colors.onPrimary, textAlign: 'center' }]}>{banner}</Text>
         </View>
       ) : null}
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={styles.content} scrollEnabled={!dragging}>
         {/* The day at a glance: the workout running now, or how the last one went. */}
         <View style={[styles.card, { flexDirection: 'row', alignItems: 'center' }]}>
           <View style={{ flex: 1, gap: 2 }}>
@@ -223,10 +239,14 @@ export default function DayDetailScreen() {
           ) : null}
         </View>
         {actionError ? <InlineError>{actionError}</InlineError> : null}
-        {removing ? (
+        {mode ? (
           <View style={[styles.buttonRow, { alignItems: 'center' }]}>
-            <Text style={[styles.muted, { flex: 1 }]}>Removing also deletes the sets logged on that exercise.</Text>
-            <Button label="Done" compact onPress={() => setRemoving(false)} />
+            <Text style={[styles.muted, { flex: 1 }]}>
+              {mode === 'remove'
+                ? 'Removing also deletes the sets logged on that exercise.'
+                : 'Renaming keeps all the sets logged on that exercise.'}
+            </Text>
+            <Button label="Done" compact onPress={() => setMode(null)} />
           </View>
         ) : null}
         {day.exercises.length === 0 ? (
@@ -235,28 +255,45 @@ export default function DayDetailScreen() {
             <Text style={styles.muted}>Add the exercises you do on {day.name}, for example Bench press or Incline dumbbell press.</Text>
           </View>
         ) : null}
-        {day.exercises.map((e) => {
-          const parts: string[] = [];
-          if (e.variationName.trim().toLowerCase() !== e.name.trim().toLowerCase()) parts.push(e.variationName);
-          if (day.workout) parts.push(`${plural(e.loggedSetCount, 'set')} logged`);
-          else parts.push('Tap to see past sets');
-          return (
-            <ListRow
-              key={e.id}
-              title={e.name}
-              subtitle={parts.join(' · ')}
-              onPress={removing ? undefined : () => onExercisePress(e.id)}
-              right={
-                removing ? (
-                  <Button label="Remove" variant="danger" compact onPress={() => onRemoveExercise(e.id, e.name)} />
-                ) : (
-                  <Chevron />
-                )
-              }
-            />
-          );
-        })}
-        {!removing ? (
+        <ReorderableList
+          items={day.exercises}
+          keyOf={(e) => e.id}
+          disabled={mode !== null}
+          onDragChange={setDragging}
+          onReorder={(ids) => reorderExercises(db, ids).then(reload, () => {
+            setActionError('Could not save the new order. Try again.');
+            reload();
+          })}
+          renderItem={(e, drag) => {
+            const parts: string[] = [];
+            if (e.variationName.trim().toLowerCase() !== e.name.trim().toLowerCase()) parts.push(e.variationName);
+            if (day.workout) parts.push(`${plural(e.loggedSetCount, 'set')} logged`);
+            else parts.push('Tap to see past sets');
+            return (
+              <ListRow
+                {...(mode ? {} : drag.handlers)}
+                lifted={drag.active}
+                title={e.name}
+                subtitle={parts.join(' · ')}
+                onPress={mode ? undefined : () => onExercisePress(e.id)}
+                right={
+                  mode === 'remove' ? (
+                    <Button label="Remove" variant="danger" compact onPress={() => onRemoveExercise(e.id, e.name)} />
+                  ) : mode === 'rename' ? (
+                    <Button
+                      label="Rename"
+                      compact
+                      onPress={() => router.push({ pathname: '/add-exercise', params: { dayId, exerciseId: e.id } })}
+                    />
+                  ) : (
+                    <Chevron />
+                  )
+                }
+              />
+            );
+          }}
+        />
+        {!mode ? (
           <Button
             label="Add exercise"
             icon="add"

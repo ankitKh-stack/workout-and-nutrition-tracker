@@ -64,6 +64,7 @@ These terms are used throughout the spec. They are defined for a reader who has 
 **What the user sees:**
 - Screen title: "Workouts".
 - A vertical list, one row per day basket. A day with a workout in progress is listed first and highlighted with an outline in the data colour and the line "In progress · started 18:05" under its name, so the user can get back to it in one tap. The other days follow with the most recently changed day on top: any change inside a day (renaming it, adding or removing an exercise, swapping or creating a variation, starting or finishing a workout, adding, editing or removing a set or intensifier) moves it to the top. A newly created day also starts at the top.
+- **Reorder by dragging:** touch and hold a day row (about 0.3 s) to pick it up; it lifts slightly with an outline. Drag it up or down while the other rows slide out of the way, and let go to drop it. The new order is saved at once. Letting go without moving puts it back and opens nothing. A later change inside any day still moves that day to the top, and a day with a workout in progress stays first. Screen readers get "Move up" and "Move down" actions on each row instead.
 - Each row shows: the day's name (for example "Push Day"); a second line with the number of exercises ("4 exercises") and the date of the last completed workout of this day ("Last workout: 28 Oct 2026") or "No workouts yet".
 - A button at the bottom of the list (or top-right of the header): "+ New day".
 
@@ -81,7 +82,7 @@ These terms are used throughout the spec. They are defined for a reader who has 
 
 **Error state:** If reading from storage fails, show "Could not load your days." with a "Try again" button that re-runs the read. (Reason: storage failure is rare but should never show a blank screen that looks like data loss.)
 
-**Technical:** On focus, query all `DayBasket` records ordered by: in-progress workout first, then `lastChangedAt` descending, where `lastChangedAt` is the latest `updatedAt` of the day, its exercises, its workouts and the sets in those workouts. Deleting an exercise stamps the day, and removing a set or intensifier stamps its workout, so deletions also count as changes. For each, count its `Exercise` records and find the latest `Workout` with `status = completed` (by `startedAt`) and whether one with `status = in_progress` exists.
+**Technical:** On focus, query all `DayBasket` records ordered by: in-progress workout first, then `lastChangedAt` descending, where `lastChangedAt` is the latest of the day's `updatedAt` and `movedAt`, and the `updatedAt` of its exercises, its workouts and the sets in those workouts. Dropping a dragged day writes `movedAt` on every day: now for the top day, then one millisecond earlier for each day below it, so the dragged order ranks above every earlier change. Deleting an exercise stamps the day, and removing a set or intensifier stamps its workout, so deletions also count as changes. For each, count its `Exercise` records and find the latest `Workout` with `status = completed` (by `startedAt`) and whether one with `status = in_progress` exists.
 
 ---
 
@@ -124,7 +125,7 @@ These terms are used throughout the spec. They are defined for a reader who has 
 - A status line under the header:
   - No workout in progress: "Last workout: 28 Oct 2026" or "No workouts yet".
   - Workout in progress: "Workout in progress — started 18:05".
-- The exercise list, one row per exercise, in the order added. Each row shows: the exercise name, and a second line with the currently selected variation's name (only when it differs from the exercise name) and, during a workout, how many sets have been logged for that exercise in this workout ("3 sets logged").
+- The exercise list, one row per exercise, in the order added or the order the user dragged them into. Touch and hold a row to pick it up and drag it to a new place, as on Home (3.1); the order is saved at once and counts as a change to the day. Dragging is off while renaming or removing. Each row shows: the exercise name, and a second line with the currently selected variation's name (only when it differs from the exercise name) and, during a workout, how many sets have been logged for that exercise in this workout ("3 sets logged").
 - A row-style button at the end of the list: "+ Add exercise".
 - A primary button at the bottom: "Start workout" (no workout in progress) or "Finish workout" (workout in progress).
 
@@ -132,7 +133,7 @@ These terms are used throughout the spec. They are defined for a reader who has 
 - Exercise rows (tappable).
 - "+ Add exercise" button.
 - "Start workout" / "Finish workout" button.
-- "⋯" menu with three items: "Rename day", "Remove exercises", "Delete day".
+- "⋯" menu with four items: "Rename day", "Rename exercises", "Remove exercises", "Delete day".
 
 **Actions:**
 - Tap "+ Add exercise" → opens Add exercise (3.4). Allowed with or without a workout in progress.
@@ -143,6 +144,7 @@ These terms are used throughout the spec. They are defined for a reader who has 
   - If at least one set row exists in this workout: mark the workout completed and show a confirmation banner at the top of the screen for 3 seconds: "Workout saved". The button returns to "Start workout".
   - If no set rows exist: show a dialog "No sets were logged. Save this as a workout with zero volume?" with "Save" and "Cancel". Save completes the workout (it will show on the calendar in the faintest shade); Cancel leaves it in progress.
 - "⋯" → "Rename day" → opens Name Your Day (3.2) in rename mode.
+- "⋯" → "Rename exercises" → each exercise row shows a "Rename" button instead of the "›" arrow, with "Renaming keeps all the sets logged on that exercise." and a "Done" button above the list. "Rename" opens the Add exercise modal (3.4) titled "Rename Exercise", filled with the current name, with "Save" instead of "Add". Names follow the same rules as adding (duplicates in the day are blocked with "This day already has an exercise called 'Dips'."). The exercise keeps its id, so its history stays linked; its variation with the old name (the one created with it) is renamed too, unless another variation already has the new name. Disabled when the day has no exercises.
 - "⋯" → "Remove exercises" → each exercise row shows a red "Remove" button instead of the "›" arrow, and a "Done" button appears above the list. Tapping "Remove" shows: "Remove 'Bench press'? This permanently removes 1 variation and 6 logged sets (including past workouts, so their volume and calendar shade will change). This cannot be undone." Remove deletes the exercise; Cancel closes the dialog. "Done" returns the rows to normal. The menu item is disabled when the day has no exercises.
 - "⋯" → "Delete day" → shows a confirmation dialog: "Delete 'Push Day'? This permanently removes its 4 exercises and 12 logged workouts. This cannot be undone." with "Delete" (destructive style) and "Cancel". Delete removes the day and everything belonging to it and returns to Home (3.1). Cancel closes the dialog.
 
@@ -153,6 +155,7 @@ These terms are used throughout the spec. They are defined for a reader who has 
 **Error states:**
 - Storage read fails: "Could not load this day." with "Try again".
 - Remove exercise fails: "Could not remove this exercise. Nothing was removed."
+- Saving a dragged order fails: "Could not save the new order. Try again." and the list returns to the saved order.
 - Delete fails: "Could not delete this day. Nothing was removed." (the delete runs in a single transaction, so a failure leaves all data intact).
 
 **Technical:**
@@ -497,6 +500,7 @@ The record shapes below are loose descriptions, not a schema. Every record has a
 ### 5.1 DayBasket
 
 - `name` — text, 1–40 characters, unique per user ignoring case and outer spaces.
+- `movedAt` — when the user last dragged the days into order on Home, or empty (schema version 3).
 
 Relation: a DayBasket has many Exercises and many Workouts; deleting it deletes all of them and everything that belongs to them.
 
@@ -504,7 +508,7 @@ Relation: a DayBasket has many Exercises and many Workouts; deleting it deletes 
 
 - `dayId` — the DayBasket it belongs to.
 - `name` — text, 1–60 characters, unique within its day ignoring case and outer spaces.
-- `position` — whole number giving list order within the day.
+- `position` — whole number giving list order within the day; rewritten as 1, 2, 3… when the user drags exercises into a new order.
 - `defaultVariationId` — the variation the logging screen opens on when a workout has no selection recorded for this exercise; updated on every swap.
 
 Relation: an Exercise belongs to exactly one DayBasket and has one or more Variations.
@@ -677,7 +681,7 @@ The brief left the points below undecided. The provisional defaults were reviewe
 6. Bodyweight exercises logged with no weight contribute **0** to volume (weight × reps); no special handling.
 7. ~~Weight is labelled kg with no conversion.~~ Superseded: weight is shown in **kg or lb**, chosen on the More tab, and stored in kg (3.10).
 8. Completed workouts are **read-only**; their sets cannot be edited or deleted, and a completed workout cannot be deleted on its own (only by deleting its day).
-9. Exercises **can be removed** (3.3), which also removes their logged sets. Variations still cannot be renamed or deleted, and exercises cannot be renamed.
+9. Exercises **can be removed** (3.3), which also removes their logged sets. Exercises **can be renamed** and **reordered by dragging** (3.3), and days can be reordered by dragging (3.1). Variations still cannot be renamed or deleted.
 10. Each exercise and its variations **belong to one day basket**; progression is not shared between days.
 11. An in-progress workout **can only be finished**, not discarded.
 12. The calendar week starts on **Monday**. ~~20 weeks are visible.~~ Superseded: the calendar shows **one month at a time** with month arrows (3.8).

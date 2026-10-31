@@ -6,6 +6,7 @@ import { Pressable, Text, TextInput, View, type StyleProp, type TextInputProps, 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useEnsureVisible } from '@/components/KeyboardAwareScroll';
+import type { DragHandlers } from '@/components/ReorderableList';
 import { formatDayHeading } from '@/lib/format';
 import { fonts } from '@/theme/palette';
 import { useTheme } from '@/theme/settings';
@@ -78,16 +79,25 @@ type ListRowProps = {
   right?: ReactNode;
   disabled?: boolean;
   style?: StyleProp<ViewStyle>;
-};
+  /** Lifted for dragging: outlined so it stands out from the rows around it. */
+  lifted?: boolean;
+} & Partial<DragHandlers>;
 
-export function ListRow({ title, subtitle, status, onPress, right, disabled, style }: ListRowProps) {
+export function ListRow({ title, subtitle, status, onPress, right, disabled, style, lifted, ...drag }: ListRowProps) {
   const { styles, colors } = useTheme();
   return (
     <Pressable
       accessibilityRole={onPress ? 'button' : undefined}
       onPress={onPress}
-      disabled={disabled || !onPress}
-      style={({ pressed }) => [styles.row, pressed && onPress && styles.pressed, disabled && styles.buttonDisabled, style]}
+      disabled={disabled || (!onPress && !drag.onLongPress)}
+      {...drag}
+      style={({ pressed }) => [
+        styles.row,
+        pressed && onPress && styles.pressed,
+        disabled && styles.buttonDisabled,
+        style,
+        lifted && { borderWidth: 1.5, borderColor: colors.text, opacity: 1 },
+      ]}
     >
       <View style={styles.rowText}>
         <Text style={styles.rowTitle} numberOfLines={1}>

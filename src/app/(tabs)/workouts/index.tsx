@@ -1,17 +1,20 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
+import { useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 
+import { ReorderableList } from '@/components/ReorderableList';
 import { Button, Chevron, ErrorView, ListRow, PageHeader } from '@/components/ui';
 import { WeekStrip } from '@/components/WeekStrip';
-import { getCalendarWorkouts, listDays, type DaySummary } from '@/data/repository';
+import { getCalendarWorkouts, listDays, reorderDays, type DaySummary } from '@/data/repository';
 import { formatDateLong, formatTime, plural } from '@/lib/format';
 import { useFocusData } from '@/lib/useFocusData';
 import { useTheme } from '@/theme/settings';
 
 // Home / Day list (SPEC.md 3.1). A day with a workout in progress is listed
 // first and marked in the data hue so the user can get back to it in one tap.
+// Holding a day and dragging it moves it.
 export default function HomeScreen() {
   const db = useSQLiteContext();
   const { styles, colors } = useTheme();
@@ -20,31 +23,41 @@ export default function HomeScreen() {
     [db],
   );
   const days = data?.days;
+  const [dragging, setDragging] = useState(false);
 
   if (error) return <ErrorView message="Could not load your days." onRetry={reload} />;
 
   return (
     <View style={styles.screen}>
       <PageHeader title="Workouts" />
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={styles.content} scrollEnabled={!dragging}>
         {/* The week sits above the days so it is the first thing seen. */}
         {data && data.workouts.length > 0 ? <WeekStrip workouts={data.workouts} /> : null}
-        {days?.map((day) => {
-          const active = day.inProgressSince !== null;
-          return (
-            <ListRow
-              key={day.id}
-              title={day.name}
-              status={active ? `In progress · started ${formatTime(day.inProgressSince!)}` : undefined}
-              subtitle={`${plural(day.exerciseCount, 'exercise')} · ${
-                day.lastWorkoutDate ? `last ${formatDateLong(day.lastWorkoutDate)}` : 'no workouts yet'
-              }`}
-              right={<Chevron />}
-              style={active ? { borderWidth: 1.5, borderColor: colors.accent } : undefined}
-              onPress={() => router.push({ pathname: '/workouts/day/[dayId]', params: { dayId: day.id } })}
-            />
-          );
-        })}
+        {days ? (
+          <ReorderableList
+            items={days}
+            keyOf={(day) => day.id}
+            onDragChange={setDragging}
+            onReorder={(ids) => reorderDays(db, ids).then(reload, reload)}
+            renderItem={(day, drag) => {
+              const active = day.inProgressSince !== null;
+              return (
+                <ListRow
+                  {...drag.handlers}
+                  lifted={drag.active}
+                  title={day.name}
+                  status={active ? `In progress · started ${formatTime(day.inProgressSince!)}` : undefined}
+                  subtitle={`${plural(day.exerciseCount, 'exercise')} · ${
+                    day.lastWorkoutDate ? `last ${formatDateLong(day.lastWorkoutDate)}` : 'no workouts yet'
+                  }`}
+                  right={<Chevron />}
+                  style={active ? { borderWidth: 1.5, borderColor: colors.accent } : undefined}
+                  onPress={() => router.push({ pathname: '/workouts/day/[dayId]', params: { dayId: day.id } })}
+                />
+              );
+            }}
+          />
+        ) : null}
         <Button label="New day" icon="add" variant="primary" onPress={() => router.push('/name-day')} />
         {days ? <GettingStarted days={days} /> : null}
         {days && days.length === 0 ? (

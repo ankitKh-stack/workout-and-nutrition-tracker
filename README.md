@@ -8,7 +8,7 @@ Nutrition tracking is planned for a later version; the Nutrition tab is a placeh
 
 ## Features
 
-- **Days and exercises.** Create a day, add exercises by typing a name, rename or delete days, and remove exercises.
+- **Days and exercises.** Create a day, add exercises by typing a name, rename or delete days, rename or remove exercises, and touch and hold a day or exercise to drag it into a new order.
 - **Logging.** Each set has reps and weight fields that save as you type, so closing the app mid-workout loses nothing. Every set shows what you did on the same set last time ("Last 10 × 60 kg").
 - **Intensifiers.** Drop sets (own reps and weight), partial reps (reps only, at the parent set's weight) and supersets (pairs a set with another exercise in the day).
 - **Variations.** Swap variations mid-workout or create a new one on the spot. Sets already logged stay on the variation they were done on, so each variation keeps its own history.

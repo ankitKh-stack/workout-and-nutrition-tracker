@@ -37,14 +37,16 @@ export type DaySummary = {
 /**
  * Days with a workout in progress come first; the rest follow with the most
  * recently changed day on top. "Changed" is the latest timestamp written
- * anywhere inside the day: the day itself (rename), its exercises (add, swap),
- * its workouts (start, finish, remove a set) and every set (add, edit).
+ * anywhere inside the day: the day itself (rename, drag into place), its
+ * exercises (add, rename, reorder, swap), its workouts (start, finish, remove
+ * a set) and every set (add, edit).
  */
 export async function listDays(db: SQLiteDatabase): Promise<DaySummary[]> {
   return db.getAllAsync<DaySummary>(
     `SELECT d.id, d.name,
        MAX(
          d.updated_at,
+         COALESCE(d.moved_at, ''),
          COALESCE((SELECT MAX(e.updated_at) FROM exercise e WHERE e.day_id = d.id), ''),
          COALESCE((SELECT MAX(w.updated_at) FROM workout w WHERE w.day_id = d.id), ''),
          COALESCE((SELECT MAX(s.updated_at) FROM workout_set s JOIN workout w ON w.id = s.workout_id
@@ -87,6 +89,20 @@ export async function createDay(db: SQLiteDatabase, name: string): Promise<strin
 export async function renameDay(db: SQLiteDatabase, dayId: string, name: string): Promise<void> {
   await assertUniqueDayName(db, name, dayId);
   await db.runAsync('UPDATE day_basket SET name = ?, updated_at = ? WHERE id = ?', name.trim(), now(), dayId);
+}
+
+/**
+ * Saves the order the user dragged the days into (ids top to bottom). Each day
+ * gets a "moved" time just under now, in that order, which ranks above every
+ * earlier change; a later change inside any day still lifts it to the top.
+ */
+export async function reorderDays(db: SQLiteDatabase, dayIds: string[]): Promise<void> {
+  const base = Date.now();
+  await db.withTransactionAsync(async () => {
+    for (const [i, id] of dayIds.entries()) {
+      await db.runAsync('UPDATE day_basket SET moved_at = ? WHERE id = ?', new Date(base - i).toISOString(), id);
+    }
+  });
 }
 
 export async function getDayDeletionCounts(
@@ -245,6 +261,48 @@ export async function addExercise(db: SQLiteDatabase, dayId: string, name: strin
     );
   });
   return exerciseId;
+}
+
+export async function getExerciseName(db: SQLiteDatabase, exerciseId: string): Promise<string | null> {
+  const row = await db.getFirstAsync<{ name: string }>('SELECT name FROM exercise WHERE id = ?', exerciseId);
+  return row?.name ?? null;
+}
+
+/**
+ * Renames an exercise. Its variation with the old name (the one created with
+ * it) is renamed too, so history and logging show the new name; other
+ * variations keep theirs. The id stays, so all logged sets stay linked.
+ */
+export async function renameExercise(db: SQLiteDatabase, exerciseId: string, name: string): Promise<void> {
+  const exercise = await db.getFirstAsync<{ day_id: string; name: string }>(
+    'SELECT day_id, name FROM exercise WHERE id = ?',
+    exerciseId,
+  );
+  if (!exercise) throw new Error('Exercise not found');
+  const siblings = await db.getAllAsync<{ id: string; name: string }>('SELECT id, name FROM exercise WHERE day_id = ?', exercise.day_id);
+  if (siblings.some((e) => e.id !== exerciseId && sameName(e.name, name))) {
+    throw new ValidationError(`This day already has an exercise called '${name.trim()}'.`);
+  }
+  const variations = await db.getAllAsync<{ id: string; name: string }>('SELECT id, name FROM variation WHERE exercise_id = ?', exerciseId);
+  const original = variations.find((v) => sameName(v.name, exercise.name));
+  const clash = variations.some((v) => v.id !== original?.id && sameName(v.name, name));
+  const t = now();
+  await db.withTransactionAsync(async () => {
+    await db.runAsync('UPDATE exercise SET name = ?, updated_at = ? WHERE id = ?', name.trim(), t, exerciseId);
+    if (original && !clash) {
+      await db.runAsync('UPDATE variation SET name = ?, updated_at = ? WHERE id = ?', name.trim(), t, original.id);
+    }
+  });
+}
+
+/** Saves the order the user dragged a day's exercises into (ids top to bottom). */
+export async function reorderExercises(db: SQLiteDatabase, exerciseIds: string[]): Promise<void> {
+  const t = now();
+  await db.withTransactionAsync(async () => {
+    for (const [i, id] of exerciseIds.entries()) {
+      await db.runAsync('UPDATE exercise SET position = ?, updated_at = ? WHERE id = ?', i + 1, t, id);
+    }
+  });
 }
 
 export async function getExerciseDeletionCounts(
