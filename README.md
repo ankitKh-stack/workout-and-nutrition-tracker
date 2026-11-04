@@ -13,7 +13,7 @@ Nutrition tracking is planned for a later version; the Nutrition tab is a placeh
 - **Intensifiers.** Drop sets (own reps and weight), partial reps (reps only, at the parent set's weight) and supersets (pairs a set with another exercise in the day, or one you add on the spot).
 - **Variations.** Swap variations mid-workout or create a new one on the spot. Sets already logged stay on the variation they were done on, so each variation keeps its own history.
 - **Resume and auto-end.** Resume a workout up to 30 minutes after finishing it. A workout left with no activity for over an hour ends by itself (and is discarded if nothing was logged).
-- **History.** A History tab lists your recent workouts; tap one to see every set. Tap an exercise when no workout is running to see its last five workouts.
+- **History.** More → History lists your recent workouts; tap one to see every set. Tap an exercise when no workout is running to see its last five workouts.
 - **Calendar.** One month at a time, each day shaded by the change in volume (weight × reps) against the previous workout of the same day. Home shows the current week in the same shading.
 - **Settings.** Light or dark theme, and weights in kg or lb. Weights are always stored in kg, so switching never changes your data.
 
@@ -54,7 +54,7 @@ src/
   app/            Screens (Expo Router: every file is a route)
     (tabs)/       Workouts, Calendar, Nutrition and More tabs
       workouts/   Day list, day detail, logging and history screens
-      history/    Recent workouts list and past-workout screen
+      more/       Settings, plus history/: recent workouts list and past-workout screen
     *.tsx         Modals: name a day, add exercise, intensifier picker, swap variation
   components/     Shared UI (buttons, rows, fields, week strip)
   data/           schema.ts (tables and migrations), repository.ts (all reads and writes)

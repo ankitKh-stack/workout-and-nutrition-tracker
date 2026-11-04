@@ -44,14 +44,14 @@ These terms are used throughout the spec. They are defined for a reader who has 
 
 ### 3.0 Navigation structure
 
-**Summary:** The app has five tabs at the bottom: Workouts, History, Calendar, Nutrition and More. Everything to do with days, exercises and logging lives under the Workouts tab as a stack of screens the user moves forward and back through.
+**Summary:** The app has four tabs at the bottom: Workouts, Calendar, Nutrition and More. History is opened from More. Everything to do with days, exercises and logging lives under the Workouts tab as a stack of screens the user moves forward and back through.
 
 **Technical:**
-- Use `expo-router` (the default navigation in a new Expo project) with a bottom tab layout of five tabs: `Workouts`, `History`, `Calendar`, `Nutrition`, `More`. The app opens on the `Workouts` tab.
-- Tab root screens (Home, History, Calendar, Nutrition, More) hide the navigation header and show a large page title with the weekday and date above it ("FRIDAY, OCTOBER 30"), following the reference screenshots.
+- Use `expo-router` (the default navigation in a new Expo project) with a bottom tab layout of four tabs: `Workouts`, `Calendar`, `Nutrition`, `More`. The app opens on the `Workouts` tab.
+- Tab root screens (Home, Calendar, Nutrition, More) hide the navigation header and show a large page title with the weekday and date above it ("FRIDAY, OCTOBER 30"), following the reference screenshots.
 - The app has a light and a dark theme (3.10). Colours come from one palette per theme in `src/theme/palette.ts`; screens never hard-code colours.
 - Workouts stack, in push order: Home / Day list (3.1) → Day detail (3.3) → Exercise logging (3.5).
-- History stack: History list (3.12) → Past workout (3.12).
+- More stack: More (3.10) → History list (3.12) → Past workout (3.12).
 - Modal screens (presented over the current screen, dismissed with Cancel or the system back gesture): Name Your Day (3.2), Add exercise (3.4), Intensifier picker (3.6), Variation swap (3.7).
 - Every screen follows the loose visual inspiration: items are presented as a vertical list, each row has one clear entry field or one clear button, and density is similar to a typical tracking app (several rows visible at once). No colours, fonts or spacing values are specified; use the platform defaults or plain styles.
 - Every screen reads its data from storage when it gains focus, so that a change made on one screen is visible on any other screen the next time it is shown, with no manual refresh.
@@ -369,7 +369,7 @@ These terms are used throughout the spec. They are defined for a reader who has 
 
 **Summary:** A settings screen with two pill toggles: Theme (Light / Dark) and Weight (kg / lb). Both take effect immediately on every screen and are remembered after a restart. Switching the unit changes how weights are shown and typed; it never changes stored data.
 
-**What the user sees:** Large title "More"; a card "Theme" with a Light | Dark pill toggle; a card "Weight" with a kg | lb pill toggle and the note "Switching converts every weight you see, including past workouts. Your logged data is not changed."
+**What the user sees:** Large title "More" with "History, settings and your data" under it; a "History" row ("Your recent workouts", with a › arrow) that opens History (3.12); a card "Theme" with a Light | Dark pill toggle; a card "Weight" with a kg | lb pill toggle and the note "Switching converts every weight you see, including past workouts. Your logged data is not changed."
 
 **Your data:** a third card shows counts of days, exercises, completed workouts and sets logged in them, with "Stored only on this phone. Nothing is uploaded."
 
@@ -400,10 +400,10 @@ These terms are used throughout the spec. They are defined for a reader who has 
 
 ### 3.12 History (recent workouts)
 
-**Summary:** A tab listing the most recent completed workouts across all days, newest first, so the user can look back at what they did without going through each day.
+**Summary:** Opened from the History row on More (3.10). It lists the most recent completed workouts across all days, newest first, so the user can look back at what they did without going through each day.
 
 **What the user sees:**
-- Page title "History" with "Your recent workouts" under it.
+- Header "History" with a back arrow to More.
 - Up to the 50 most recent completed workouts. Each row shows the day's name, "28 Oct 2026 · 18:05 · 1,860 kg", the change versus the previous workout of the same day ("+18% vs 21 Oct", in the data hue for growth and grey for a drop or zero), and a small square in that workout's calendar shade.
 - Tapping a row opens the past workout: its date with start and finish time, its volume and change, then one card per exercise variation with each set and its intensifier rows, shown as in Exercise history (3.11). Superset partner rows appear under the set they were paired with.
 
