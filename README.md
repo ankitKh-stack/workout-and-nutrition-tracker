@@ -37,7 +37,7 @@ Then scan the QR code with **Expo Go** on your phone (Android or iOS), or press 
 | `npm start` | Starts the Expo dev server |
 | `npm run android` / `npm run ios` / `npm run web` | Starts and opens on that platform |
 | `npm run typecheck` | Type-checks the project (`tsc --noEmit`) |
-| `npm test` | Runs the unit tests for volume, progress shading and unit conversion (Node's built-in test runner) |
+| `npm test` | Runs the tests (Node's built-in test runner): volume, progress shading and unit conversion, plus the database code run against an in-memory SQLite database |
 | `npx expo-doctor` | Checks dependency versions and config |
 
 ## Tech stack
@@ -59,7 +59,7 @@ src/
   domain/         progress.ts: volume, percentage change and shade rules (pure, tested)
   lib/            Formatting, unit conversion, dialogs, data-loading hooks
   theme/          Light and dark palettes, type, shared styles, settings provider
-tests/            Unit tests
+tests/            Unit tests, and repository tests on in-memory SQLite (setup.ts lets app code load in Node)
 SPEC.md           The full build specification
 ```
 
