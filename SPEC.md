@@ -44,13 +44,14 @@ These terms are used throughout the spec. They are defined for a reader who has 
 
 ### 3.0 Navigation structure
 
-**Summary:** The app has four tabs at the bottom: Workouts, Calendar, Nutrition and More. Everything to do with days, exercises and logging lives under the Workouts tab as a stack of screens the user moves forward and back through.
+**Summary:** The app has five tabs at the bottom: Workouts, History, Calendar, Nutrition and More. Everything to do with days, exercises and logging lives under the Workouts tab as a stack of screens the user moves forward and back through.
 
 **Technical:**
-- Use `expo-router` (the default navigation in a new Expo project) with a bottom tab layout of four tabs: `Workouts`, `Calendar`, `Nutrition`, `More`. The app opens on the `Workouts` tab.
-- Tab root screens (Home, Calendar, Nutrition, More) hide the navigation header and show a large page title with the weekday and date above it ("FRIDAY, OCTOBER 30"), following the reference screenshots.
+- Use `expo-router` (the default navigation in a new Expo project) with a bottom tab layout of five tabs: `Workouts`, `History`, `Calendar`, `Nutrition`, `More`. The app opens on the `Workouts` tab.
+- Tab root screens (Home, History, Calendar, Nutrition, More) hide the navigation header and show a large page title with the weekday and date above it ("FRIDAY, OCTOBER 30"), following the reference screenshots.
 - The app has a light and a dark theme (3.10). Colours come from one palette per theme in `src/theme/palette.ts`; screens never hard-code colours.
 - Workouts stack, in push order: Home / Day list (3.1) → Day detail (3.3) → Exercise logging (3.5).
+- History stack: History list (3.12) → Past workout (3.12).
 - Modal screens (presented over the current screen, dismissed with Cancel or the system back gesture): Name Your Day (3.2), Add exercise (3.4), Intensifier picker (3.6), Variation swap (3.7).
 - Every screen follows the loose visual inspiration: items are presented as a vertical list, each row has one clear entry field or one clear button, and density is similar to a typical tracking app (several rows visible at once). No colours, fonts or spacing values are specified; use the platform defaults or plain styles.
 - Every screen reads its data from storage when it gains focus, so that a change made on one screen is visible on any other screen the next time it is shown, with no manual refresh.
@@ -138,6 +139,8 @@ These terms are used throughout the spec. They are defined for a reader who has 
 **Actions:**
 - Tap "+ Add exercise" → opens Add exercise (3.4). Allowed with or without a workout in progress.
 - Tap "Start workout" → creates an in-progress workout for this day dated today; the status line and button update immediately.
+- **Resume:** when the day's last workout was finished within the last 30 minutes and none is in progress, a "Resume workout finished 18:05" button appears above "Start workout". It puts that workout back in progress with all its sets, as if Finish had not been tapped. If the 30 minutes run out while the screen is open, tapping it shows "This workout ended more than 30 minutes ago, so it can no longer be resumed." and the button disappears.
+- **Auto-end:** a workout in progress with no activity (a set added or edited, a variation swapped) for over an hour is ended automatically the next time any screen loads. It is saved as finished at its last activity, so it is already past the resume window. A workout with nothing typed into any set is discarded instead of being saved with zero volume. (Reason: nothing runs in the background while the app is closed, so the check happens on the next read; an accidentally started workout should not leave a zero square on the calendar.)
 - Tap an exercise row while a workout is in progress → opens Exercise logging (3.5) for that exercise.
 - Tap an exercise row while no workout is in progress → opens Exercise history (3.11), read-only. No workout is started and nothing is written. (Reason: the user often wants to check what they lifted last time without starting a workout; workouts start only from the "Start workout" button.)
 - Tap "Finish workout":
@@ -266,10 +269,11 @@ These terms are used throughout the spec. They are defined for a reader who has 
 - Drop set → closes the picker and adds an indented Drop row (empty Reps and kg) under the parent set. Reps field gets focus.
 - Partial reps → closes and adds an indented Partials row (empty Reps, weight shown from the parent set).
 - Superset → replaces the list with "Choose the other exercise": a list of every other exercise in the same day (each row showing the exercise name and its currently selected variation). Tapping one closes the picker and adds an indented Superset row (empty Reps and kg) bound to that exercise's currently selected variation.
+- Below the list, a "New exercise" field with "Add": it adds the typed exercise to the day (same rules as 3.4, so a duplicate name shows "This day already has an exercise called 'Dips'.") and immediately pairs it as this set's superset partner.
 - Cancel → closes; nothing added.
 
 **Empty and error states:**
-- Superset chosen but the day has only this one exercise: the partner list shows "Add a second exercise to this day to make a superset." with an "Add exercise" button that opens Add exercise (3.4) and, after the exercise is added, returns to the partner list with it shown.
+- Superset chosen but the day has only this one exercise: the partner list shows "No other exercises on this day yet. Add one below." above the New exercise field.
 - Superset chosen but this set already has a superset row: the Superset choice is shown disabled with the text "This set already has a superset". (Reason: the settled definition is that a superset combines exactly two exercises, so one set has at most one partner.)
 - Intensifiers can only be attached to normal sets. The "+ Intensifier" button does not appear on intensifier rows or on superset partner rows. (Reason: the settled rule is that a drop set attaches to a normal set; attaching intensifiers to intensifiers would make the parent of a partial rep ambiguous.)
 - Storage write fails: "Could not add. Try again." in the picker; nothing is added.
@@ -391,6 +395,23 @@ These terms are used throughout the spec. They are defined for a reader who has 
 **Error state:** "Could not load this exercise." with "Try again".
 
 **Technical:** Reads only. Uses the same set-and-intensifier query as the logging screen (5.5, 5.6) for each listed workout; weights are shown in the chosen unit (3.10).
+
+---
+
+### 3.12 History (recent workouts)
+
+**Summary:** A tab listing the most recent completed workouts across all days, newest first, so the user can look back at what they did without going through each day.
+
+**What the user sees:**
+- Page title "History" with "Your recent workouts" under it.
+- Up to the 50 most recent completed workouts. Each row shows the day's name, "28 Oct 2026 · 18:05 · 1,860 kg", the change versus the previous workout of the same day ("+18% vs 21 Oct", in the data hue for growth and grey for a drop or zero), and a small square in that workout's calendar shade.
+- Tapping a row opens the past workout: its date with start and finish time, its volume and change, then one card per exercise variation with each set and its intensifier rows, shown as in Exercise history (3.11). Superset partner rows appear under the set they were paired with.
+
+**Empty state:** "No workouts yet. Finish a workout and it shows up here."
+
+**Error states:** "Could not load your workouts." / "Could not load this workout." with "Try again".
+
+**Technical:** Reads only. The list uses the same data as the Calendar (volume and change computed on read). A variation is listed in the past workout when it has normal sets in it, in the day's exercise order.
 
 ---
 
@@ -527,7 +548,7 @@ Deleting an Exercise (3.3 "Remove exercises") deletes, in one transaction: inten
 - `dayId` — the DayBasket this workout was for.
 - `date` — local calendar date (`YYYY-MM-DD`) of `startedAt`; this is the calendar square it appears on, even if it is finished after midnight.
 - `startedAt`, `finishedAt` — timestamps; `finishedAt` is empty while in progress.
-- `status` — `in_progress` or `completed`. At most one `in_progress` workout per DayBasket.
+- `status` — `in_progress` or `completed`. At most one `in_progress` workout per DayBasket. A `completed` workout can go back to `in_progress` within 30 minutes of `finishedAt` (Resume, 3.3).
 - `selectedVariations` — a map of `exerciseId → variationId` recording which variation is currently selected for each exercise in this workout, so the logging screen restores the right variation after a restart.
 - `totalVolume` — no longer written or read; volume is always computed from the workout's sets (section 5.7). The column stays in the database so existing data needs no migration.
 
@@ -683,7 +704,7 @@ The brief left the points below undecided. The provisional defaults were reviewe
 8. Completed workouts are **read-only**; their sets cannot be edited or deleted, and a completed workout cannot be deleted on its own (only by deleting its day).
 9. Exercises **can be removed** (3.3), which also removes their logged sets. Exercises **can be renamed** and **reordered by dragging** (3.3), and days can be reordered by dragging (3.1). Variations still cannot be renamed or deleted.
 10. Each exercise and its variations **belong to one day basket**; progression is not shared between days.
-11. An in-progress workout **can only be finished**, not discarded.
+11. ~~An in-progress workout can only be finished, not discarded.~~ Superseded: a workout can be **resumed** within 30 minutes of finishing, and one inactive for over an hour is **ended automatically**; if nothing was typed into it, it is discarded (3.3).
 12. The calendar week starts on **Monday**. ~~20 weeks are visible.~~ Superseded: the calendar shows **one month at a time** with month arrows (3.8).
 13. Duplicate day names are **blocked**, ignoring case and outer spaces.
 

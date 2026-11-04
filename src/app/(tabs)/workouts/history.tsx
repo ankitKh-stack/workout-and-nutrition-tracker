@@ -3,6 +3,7 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 
+import { SetLines } from '@/components/SetLines';
 import { EmptyText, ErrorView, Segmented } from '@/components/ui';
 import { getExerciseHistory } from '@/data/repository';
 import { formatDateLong, formatWeight } from '@/lib/format';
@@ -14,7 +15,7 @@ import { useSettings, useTheme } from '@/theme/settings';
 // starting a workout. Nothing on this screen writes to storage.
 export default function HistoryScreen() {
   const db = useSQLiteContext();
-  const { styles, colors } = useTheme();
+  const { styles } = useTheme();
   const { unit } = useSettings();
   const { exerciseId } = useLocalSearchParams<{ exerciseId: string }>();
   const [variationId, setVariationId] = useState<string | null>(null);
@@ -32,22 +33,6 @@ export default function HistoryScreen() {
       </View>
     );
   }
-
-  const w = (kg: number | null) => `${formatWeight(kg, unit)} ${unit}`;
-  const line = (label: string, value: string, color?: string, indent = false) => (
-    <View
-      key={label + value}
-      style={[
-        { flexDirection: 'row', alignItems: 'baseline', minHeight: 28 },
-        indent && { marginLeft: 12, paddingLeft: 12, borderLeftWidth: 3, borderLeftColor: color },
-      ]}
-    >
-      <Text style={[indent ? styles.muted : styles.bodyStrong, { flex: 1 }, indent && color ? { color } : null]} numberOfLines={1}>
-        {label}
-      </Text>
-      <Text style={[indent ? styles.muted : styles.body, styles.number]}>{value}</Text>
-    </View>
-  );
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
@@ -80,18 +65,7 @@ export default function HistoryScreen() {
               <Text style={styles.small}> {unit} volume</Text>
             </Text>
           </View>
-          {wk.sets.map((s) => (
-            <View key={s.setId} style={{ gap: 2 }}>
-              {line(`Set ${s.number}`, `${s.reps ?? '—'} × ${w(s.weight)}`)}
-              {s.intensifiers.map((i) =>
-                i.type === 'drop'
-                  ? line('Drop set', `${i.reps ?? '—'} × ${w(i.weight)}`, colors.kinds.drop, true)
-                  : i.type === 'partial'
-                    ? line('Partial reps', `${i.reps ?? '—'} at ${w(s.weight)}`, colors.kinds.partial, true)
-                    : line(`Superset: ${i.partnerLabel}`, `${i.reps ?? '—'} × ${w(i.weight)}`, colors.kinds.superset, true),
-              )}
-            </View>
-          ))}
+          <SetLines sets={wk.sets} />
         </View>
       ))}
 

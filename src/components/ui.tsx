@@ -74,6 +74,8 @@ type ListRowProps = {
   subtitle?: string;
   /** A line in the data hue under the title, e.g. "In progress · started 16:55". */
   status?: string;
+  /** Colour of the status line; the data hue unless given. */
+  statusColor?: string;
   onPress?: () => void;
   right?: ReactNode;
   disabled?: boolean;
@@ -82,7 +84,7 @@ type ListRowProps = {
   lifted?: boolean;
 } & Partial<DragHandlers>;
 
-export function ListRow({ title, subtitle, status, onPress, right, disabled, style, lifted, ...drag }: ListRowProps) {
+export function ListRow({ title, subtitle, status, statusColor, onPress, right, disabled, style, lifted, ...drag }: ListRowProps) {
   const { styles, colors } = useTheme();
   return (
     <Pressable
@@ -102,7 +104,7 @@ export function ListRow({ title, subtitle, status, onPress, right, disabled, sty
         <Text style={styles.rowTitle} numberOfLines={1}>
           {title}
         </Text>
-        {status ? <Text style={[styles.rowSubtitle, { color: colors.accent }]}>{status}</Text> : null}
+        {status ? <Text style={[styles.rowSubtitle, { color: statusColor ?? colors.accent }]}>{status}</Text> : null}
         {subtitle ? <Text style={styles.rowSubtitle}>{subtitle}</Text> : null}
       </View>
       {right}

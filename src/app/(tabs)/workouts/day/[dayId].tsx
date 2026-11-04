@@ -15,14 +15,16 @@ import {
   getDayDetail,
   getExerciseDeletionCounts,
   reorderExercises,
+  resumeWorkout,
   startWorkout,
+  ValidationError,
 } from '@/data/repository';
 import { confirmAsync } from '@/lib/dialogs';
 import { formatDateLong, formatTime, formatWeight, plural } from '@/lib/format';
 import { useFocusData } from '@/lib/useFocusData';
 import { useSettings, useTheme } from '@/theme/settings';
 
-// Day detail (SPEC.md 3.3): the day's exercises plus start/finish workout,
+// Day detail (SPEC.md 3.3): the day's exercises plus start/finish/resume workout,
 // rename, delete, renaming and removing exercises, and holding an exercise to
 // drag it into a new order.
 export default function DayDetailScreen() {
@@ -74,6 +76,18 @@ export default function DayDetailScreen() {
     // No workout running: show the exercise's history read-only. Workouts
     // start only from the Start workout button.
     router.push({ pathname: '/workouts/history', params: { exerciseId } });
+  }
+
+  async function onResume() {
+    if (!day?.resumable) return;
+    setActionError(null);
+    try {
+      await resumeWorkout(db, day.resumable.id);
+      await reload();
+    } catch (e) {
+      setActionError(e instanceof ValidationError ? e.message : 'Could not resume the workout. Try again.');
+      await reload();
+    }
   }
 
   async function onRemoveExercise(exerciseId: string, name: string) {
@@ -305,7 +319,16 @@ export default function DayDetailScreen() {
         {day.workout ? (
           <Button label="Finish workout" icon="checkmark" variant="primary" onPress={onFinish} />
         ) : (
-          <Button label="Start workout" icon="play" variant="primary" onPress={onStart} />
+          <>
+            {day.resumable ? (
+              <Button
+                label={`Resume workout finished ${formatTime(day.resumable.finishedAt)}`}
+                icon="refresh"
+                onPress={onResume}
+              />
+            ) : null}
+            <Button label="Start workout" icon="play" variant="primary" onPress={onStart} />
+          </>
         )}
       </View>
     </View>

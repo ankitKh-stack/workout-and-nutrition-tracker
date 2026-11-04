@@ -43,6 +43,7 @@ export type DaySummary = {
  * a set) and every set (add, edit).
  */
 export async function listDays(db: SQLiteDatabase): Promise<DaySummary[]> {
+  await endInactiveWorkouts(db);
   return db.getAllAsync<DaySummary>(
     `SELECT d.id, d.name,
        MAX(
@@ -154,6 +155,8 @@ export type DayDetail = {
   workout: { id: string; startedAt: string; volume: number } | null;
   /** Volume (kg) of the last completed workout of this day. */
   lastWorkoutVolume: number | null;
+  /** The last workout, when it was finished within RESUME_MINUTES and nothing is in progress. */
+  resumable: { id: string; finishedAt: string } | null;
   exercises: {
     id: string;
     name: string;
@@ -179,14 +182,15 @@ async function getInProgressWorkout(db: SQLiteDatabase, dayId: string): Promise<
 }
 
 export async function getDayDetail(db: SQLiteDatabase, dayId: string): Promise<DayDetail | null> {
+  await endInactiveWorkouts(db);
   const day = await db.getFirstAsync<{ id: string; name: string }>(
     'SELECT id, name FROM day_basket WHERE id = ?',
     dayId,
   );
   if (!day) return null;
 
-  const last = await db.getFirstAsync<{ id: string; date: string }>(
-    "SELECT id, date FROM workout WHERE day_id = ? AND status = 'completed' ORDER BY started_at DESC LIMIT 1",
+  const last = await db.getFirstAsync<{ id: string; date: string; finished_at: string }>(
+    "SELECT id, date, finished_at FROM workout WHERE day_id = ? AND status = 'completed' ORDER BY started_at DESC LIMIT 1",
     dayId,
   );
   const workout = await getInProgressWorkout(db, dayId);
@@ -221,6 +225,7 @@ export async function getDayDetail(db: SQLiteDatabase, dayId: string): Promise<D
     name: day.name,
     lastWorkoutDate: last?.date ?? null,
     lastWorkoutVolume: last ? await computeWorkoutVolume(db, last.id) : null,
+    resumable: !workout && last && canResume(last.finished_at) ? { id: last.id, finishedAt: last.finished_at } : null,
     workout: workout
       ? {
           id: workout.id,
@@ -400,6 +405,107 @@ export async function finishWorkout(db: SQLiteDatabase, workoutId: string): Prom
   );
 }
 
+/** A finished workout can be resumed for this long after it ended. */
+export const RESUME_MINUTES = 30;
+/** An in-progress workout with no activity for this long is ended automatically. */
+export const AUTO_END_MINUTES = 60;
+
+const minutesSince = (iso: string) => (Date.now() - Date.parse(iso)) / 60000;
+const canResume = (finishedAt: string | null) => finishedAt !== null && minutesSince(finishedAt) <= RESUME_MINUTES;
+
+/** Puts a recently finished workout back in progress, as if Finish had not been tapped. */
+export async function resumeWorkout(db: SQLiteDatabase, workoutId: string): Promise<void> {
+  const w = await db.getFirstAsync<{ day_id: string; status: string; finished_at: string | null }>(
+    'SELECT day_id, status, finished_at FROM workout WHERE id = ?',
+    workoutId,
+  );
+  if (!w || w.status !== 'completed') throw new ValidationError('This workout cannot be resumed.');
+  if (!canResume(w.finished_at)) {
+    throw new ValidationError(`This workout ended more than ${RESUME_MINUTES} minutes ago, so it can no longer be resumed.`);
+  }
+  if (await getInProgressWorkout(db, w.day_id)) throw new ValidationError('This day already has a workout in progress.');
+  // Resuming counts as activity, so the auto-end clock starts again from now.
+  await db.runAsync(
+    "UPDATE workout SET status = 'in_progress', finished_at = NULL, updated_at = ? WHERE id = ?",
+    now(), workoutId,
+  );
+}
+
+/**
+ * Ends every in-progress workout with no activity (a set added or edited,
+ * a variation swapped) for over AUTO_END_MINUTES. It is saved as finished at
+ * its last activity; one with nothing typed into any set is discarded. Run at
+ * the start of each read that shows workout state, since nothing runs in the
+ * background while the app is closed.
+ */
+export async function endInactiveWorkouts(db: SQLiteDatabase): Promise<void> {
+  const open = await db.getAllAsync<{ id: string; lastActivity: string; logged: number }>(
+    `SELECT w.id,
+       MAX(w.updated_at, COALESCE((SELECT MAX(s.updated_at) FROM workout_set s WHERE s.workout_id = w.id), '')) AS lastActivity,
+       EXISTS (SELECT 1 FROM workout_set s WHERE s.workout_id = w.id AND (s.reps IS NOT NULL OR s.weight IS NOT NULL)) AS logged
+     FROM workout w WHERE w.status = 'in_progress'`,
+  );
+  for (const w of open) {
+    if (minutesSince(w.lastActivity) <= AUTO_END_MINUTES) continue;
+    if (w.logged) {
+      await db.runAsync(
+        "UPDATE workout SET status = 'completed', finished_at = ? WHERE id = ?",
+        w.lastActivity, w.id,
+      );
+    } else {
+      await db.withTransactionAsync(async () => {
+        await db.runAsync('DELETE FROM workout_set WHERE workout_id = ?', w.id);
+        await db.runAsync('DELETE FROM intensifier WHERE workout_id = ?', w.id);
+        await db.runAsync('DELETE FROM workout WHERE id = ?', w.id);
+      });
+    }
+  }
+}
+
+export type WorkoutDetail = {
+  id: string;
+  dayId: string;
+  dayName: string;
+  date: string;
+  startedAt: string;
+  finishedAt: string | null;
+  volume: number;
+  /** Each variation with normal sets in this workout, in the day's exercise order. */
+  exercises: { variationId: string; label: string; sets: NormalSetRow[] }[];
+};
+
+/** One workout with every set logged in it, for the History tab. */
+export async function getWorkoutDetail(db: SQLiteDatabase, workoutId: string): Promise<WorkoutDetail | null> {
+  await endInactiveWorkouts(db);
+  const w = await db.getFirstAsync<{ id: string; day_id: string; day_name: string; date: string; started_at: string; finished_at: string | null }>(
+    `SELECT w.id, w.day_id, d.name AS day_name, w.date, w.started_at, w.finished_at
+     FROM workout w JOIN day_basket d ON d.id = w.day_id WHERE w.id = ?`,
+    workoutId,
+  );
+  if (!w) return null;
+  const variations = await db.getAllAsync<{ id: string; exercise: string; variation: string }>(
+    `SELECT v.id, e.name AS exercise, v.name AS variation
+     FROM variation v JOIN exercise e ON e.id = v.exercise_id
+     WHERE EXISTS (SELECT 1 FROM workout_set s WHERE s.workout_id = ? AND s.variation_id = v.id AND s.intensifier_id IS NULL)
+     ORDER BY e.position ASC, v.created_at ASC`,
+    workoutId,
+  );
+  const exercises = [];
+  for (const v of variations) {
+    exercises.push({ variationId: v.id, label: variationLabel(v.exercise, v.variation), sets: await setsWithIntensifiers(db, workoutId, v.id) });
+  }
+  return {
+    id: w.id,
+    dayId: w.day_id,
+    dayName: w.day_name,
+    date: w.date,
+    startedAt: w.started_at,
+    finishedAt: w.finished_at,
+    volume: await computeWorkoutVolume(db, workoutId),
+    exercises,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Exercise logging
 
@@ -532,6 +638,7 @@ export async function getLoggingData(
   workoutId: string,
   exerciseId: string,
 ): Promise<LoggingData | null> {
+  await endInactiveWorkouts(db);
   const exercise = await db.getFirstAsync<{ name: string; day_id: string }>(
     'SELECT name, day_id FROM exercise WHERE id = ?',
     exerciseId,
@@ -925,6 +1032,7 @@ export type CalendarWorkout = {
  * are computed on read so they always match the data that currently exists.
  */
 export async function getCalendarWorkouts(db: SQLiteDatabase): Promise<CalendarWorkout[]> {
+  await endInactiveWorkouts(db);
   const workouts = await db.getAllAsync<{ id: string; day_id: string; day_name: string; date: string; started_at: string }>(
     `SELECT w.id, w.day_id, d.name AS day_name, w.date, w.started_at
      FROM workout w JOIN day_basket d ON d.id = w.day_id

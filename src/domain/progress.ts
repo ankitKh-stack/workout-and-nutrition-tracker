@@ -48,6 +48,11 @@ export function percentChange(volume: number, previous: PreviousWorkout | null):
   };
 }
 
+/** True when volume went up (a first workout counts as growth). */
+export function isGrowth(r: ChangeResult): boolean {
+  return r.kind === 'first' || r.kind === 'previousZero' || (r.kind === 'change' && r.percent > 0);
+}
+
 /** 'none' = no workout; 'zero' = zero volume; 1–4 = progress levels, darkest is 4. */
 export type ShadeLevel = 'none' | 'zero' | 1 | 2 | 3 | 4;
 

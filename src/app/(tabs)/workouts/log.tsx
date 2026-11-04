@@ -56,7 +56,8 @@ export default function LogScreen() {
   if (data === null) {
     return (
       <View style={styles.centered}>
-        <EmptyText>This exercise no longer exists.</EmptyText>
+        {/* Also reached when an empty workout was discarded after an hour of no activity. */}
+        <EmptyText>This workout or exercise no longer exists.</EmptyText>
       </View>
     );
   }

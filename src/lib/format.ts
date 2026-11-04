@@ -1,5 +1,6 @@
 // Date, number and input helpers. Written by hand rather than with Intl so the
 // output is identical on Android, iOS and web.
+import type { ChangeResult } from '@/domain/progress';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -80,6 +81,20 @@ export function formatWeight(kg: number | null, unit: Unit): string {
 export function formatPercent(p: number): string {
   const r = Math.round(p);
   return r < 0 ? `−${Math.abs(r)}%` : `+${r}%`;
+}
+
+/** How a workout's volume changed: "+18% vs 21 Oct", "Zero volume", … */
+export function formatChange(r: ChangeResult): string {
+  switch (r.kind) {
+    case 'zero':
+      return 'Zero volume';
+    case 'first':
+      return 'First workout, counted as +100%';
+    case 'previousZero':
+      return `+100% vs ${formatDateShort(r.previousDate)} (previous workout had zero volume)`;
+    case 'change':
+      return `${formatPercent(r.percent)} vs ${formatDateShort(r.previousDate)}`;
+  }
 }
 
 export const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;

@@ -19,12 +19,14 @@ import {
   getExerciseDeletionCounts,
   getExerciseHistory,
   getLoggingData,
+  getWorkoutDetail,
   listDays,
   removeSet,
   renameDay,
   renameExercise,
   reorderDays,
   reorderExercises,
+  resumeWorkout,
   startWorkout,
   updateSetField,
   ValidationError,
@@ -211,4 +213,84 @@ test('deleting a day removes everything that belonged to it', async () => {
   for (const table of ['exercise', 'variation', 'workout', 'workout_set', 'intensifier']) {
     assert.deepEqual(await db.getFirstAsync(`SELECT COUNT(*) AS n FROM ${table}`), { n: 0 }, table);
   }
+});
+
+/** Makes a workout look as if its last activity was `minutes` ago. */
+async function age(db: SQLiteDatabase, workoutId: string, minutes: number) {
+  const then = new Date(Date.now() - minutes * 60000).toISOString();
+  await db.runAsync('UPDATE workout SET started_at = ?, updated_at = ? WHERE id = ?', then, then, workoutId);
+  await db.runAsync('UPDATE workout_set SET created_at = ?, updated_at = ? WHERE workout_id = ?', then, then, workoutId);
+  return then;
+}
+
+const workoutRow = (db: SQLiteDatabase, id: string) =>
+  db.getFirstAsync<{ status: string; finished_at: string | null }>('SELECT status, finished_at FROM workout WHERE id = ?', id);
+
+test('a workout inactive for over an hour ends at its last activity', async () => {
+  const db = await openTestDb();
+  const { dayId, workoutId } = await specWorkout(db);
+  const lastActivity = await age(db, workoutId, 61);
+  await listDays(db);
+  assert.deepEqual(await workoutRow(db, workoutId), { status: 'completed', finished_at: lastActivity });
+  const detail = (await getDayDetail(db, dayId))!;
+  assert.equal(detail.workout, null);
+  assert.equal(detail.resumable, null); // ended over 30 minutes ago
+  assert.equal((await getCalendarWorkouts(db))[0].volume, 1860);
+});
+
+test('an inactive workout with nothing typed in is discarded', async () => {
+  const db = await openTestDb();
+  const day = await createDay(db, 'Push');
+  const bench = await addExercise(db, day, 'Bench');
+  const workout = await startWorkout(db, day);
+  await addSet(db, workout, (await getLoggingData(db, workout, bench))!.selectedVariationId); // empty row
+  await age(db, workout, 61);
+  await listDays(db);
+  assert.equal(await workoutRow(db, workout), null);
+  assert.equal((await getDataSummary(db)).sets, 0);
+});
+
+test('a workout active within the hour keeps going', async () => {
+  const db = await openTestDb();
+  const { workoutId } = await specWorkout(db);
+  await age(db, workoutId, 59);
+  await listDays(db);
+  assert.equal((await workoutRow(db, workoutId))!.status, 'in_progress');
+});
+
+test('a workout finished within 30 minutes can be resumed, with its sets', async () => {
+  const db = await openTestDb();
+  const { dayId, workoutId } = await specWorkout(db);
+  await finishWorkout(db, workoutId);
+  await age(db, workoutId, 70); // sets logged long ago, finished just now
+  assert.equal((await getDayDetail(db, dayId))!.resumable?.id, workoutId);
+  await resumeWorkout(db, workoutId);
+  // Resuming counts as activity, so it is not auto-ended straight away.
+  const detail = (await getDayDetail(db, dayId))!;
+  assert.equal(detail.workout?.id, workoutId);
+  assert.equal(detail.workout?.volume, 1860);
+  assert.equal(detail.resumable, null);
+});
+
+test('resuming is refused after 30 minutes or while another workout runs', async () => {
+  const db = await openTestDb();
+  const { dayId, workoutId } = await specWorkout(db);
+  await finishWorkout(db, workoutId);
+  const other = await startWorkout(db, dayId);
+  assert.equal((await getDayDetail(db, dayId))!.resumable, null);
+  await assert.rejects(resumeWorkout(db, workoutId), /already has a workout in progress/);
+  await finishWorkout(db, other);
+  await db.runAsync('UPDATE workout SET finished_at = ? WHERE id = ?', new Date(Date.now() - 31 * 60000).toISOString(), workoutId);
+  await assert.rejects(resumeWorkout(db, workoutId), /more than 30 minutes ago/);
+});
+
+test('workout detail lists every set, with superset rows under their set', async () => {
+  const db = await openTestDb();
+  const { workoutId } = await specWorkout(db);
+  await finishWorkout(db, workoutId);
+  const detail = (await getWorkoutDetail(db, workoutId))!;
+  assert.equal(detail.volume, 1860);
+  assert.deepEqual(detail.exercises.map((e) => e.label), ['Bench']); // Curl only appears as Bench's superset
+  const [, set2] = detail.exercises[0].sets;
+  assert.deepEqual(set2.intensifiers.map((i) => [i.type, i.partnerLabel]), [['drop', null], ['partial', null], ['superset', 'Curl']]);
 });

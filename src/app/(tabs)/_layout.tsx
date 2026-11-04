@@ -35,6 +35,7 @@ export default function TabLayout() {
       }}
     >
       <Tabs.Screen name="workouts" options={{ title: 'Workouts', tabBarIcon: icon('barbell-outline') }} />
+      <Tabs.Screen name="history" options={{ title: 'History', tabBarIcon: icon('time-outline') }} />
       <Tabs.Screen name="calendar" options={{ title: 'Calendar', tabBarIcon: icon('calendar-clear-outline') }} />
       <Tabs.Screen name="nutrition" options={{ title: 'Nutrition', tabBarIcon: icon('nutrition-outline') }} />
       <Tabs.Screen name="more" options={{ title: 'More', tabBarIcon: icon('ellipsis-horizontal') }} />

@@ -5,11 +5,10 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { ErrorView, PageHeader } from '@/components/ui';
 import { getCalendarWorkouts, type CalendarWorkout } from '@/data/repository';
-import { darkerLevel, type ShadeLevel } from '@/domain/progress';
+import { darkerLevel, isGrowth, type ShadeLevel } from '@/domain/progress';
 import {
+  formatChange,
   formatDateLong,
-  formatDateShort,
-  formatPercent,
   formatWeight,
   localDateString,
   monthLong,
@@ -37,20 +36,6 @@ function monthWeeks(month: Date): (Date | null)[][] {
   const weeks = [];
   for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
   return weeks;
-}
-
-function changeText(w: CalendarWorkout): string {
-  const r = w.progress.result;
-  switch (r.kind) {
-    case 'zero':
-      return 'Zero volume';
-    case 'first':
-      return 'First workout, counted as +100%';
-    case 'previousZero':
-      return `+100% vs ${formatDateShort(r.previousDate)} (previous workout had zero volume)`;
-    case 'change':
-      return `${formatPercent(r.percent)} vs ${formatDateShort(r.previousDate)}`;
-  }
 }
 
 // Calendar (SPEC.md 3.8): one month at a time, each day shaded GitHub-style
@@ -208,9 +193,8 @@ export default function CalendarScreen() {
               <Text style={styles.sectionTitle}>{formatDateLong(selected)}</Text>
               {selectedWorkouts.length === 0 ? <Text style={styles.muted}>No workout logged</Text> : null}
               {selectedWorkouts.map((w) => {
-                const r = w.progress.result;
                 // Colour says good or bad: growth in the data hue, a drop or zero in grey.
-                const grew = r.kind === 'first' || r.kind === 'previousZero' || (r.kind === 'change' && r.percent > 0);
+                const grew = isGrowth(w.progress.result);
                 return (
                   <View key={w.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                     <View
@@ -219,7 +203,7 @@ export default function CalendarScreen() {
                     />
                     <View style={{ flex: 1, gap: 1 }}>
                       <Text style={styles.bodyStrong}>{w.dayName}</Text>
-                      <Text style={[styles.small, { color: grew ? colors.accent : colors.faint }]}>{changeText(w)}</Text>
+                      <Text style={[styles.small, { color: grew ? colors.accent : colors.faint }]}>{formatChange(w.progress.result)}</Text>
                     </View>
                     <View style={{ alignItems: 'flex-end' }}>
                       <Text style={[styles.title, styles.number]}>
