@@ -1,14 +1,15 @@
+import { router } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { ScrollView, Text, View } from 'react-native';
 
-import { PageHeader, Segmented } from '@/components/ui';
+import { Chevron, ListRow, PageHeader, Segmented } from '@/components/ui';
 import { getDataSummary } from '@/data/repository';
 import { formatNumber, formatWeight } from '@/lib/format';
 import { useFocusData } from '@/lib/useFocusData';
 import { useSettings, useTheme } from '@/theme/settings';
 
-// Settings: theme and weight unit (both apply immediately and are saved),
-// plus what is stored on this phone.
+// More: the link to History (3.12), settings for theme and weight unit (both
+// apply immediately and are saved), and what is stored on this phone.
 export default function MoreScreen() {
   const db = useSQLiteContext();
   const { styles, colors } = useTheme();
@@ -24,8 +25,14 @@ export default function MoreScreen() {
 
   return (
     <View style={styles.screen}>
-      <PageHeader title="More" subtitle="Settings and your data" />
+      <PageHeader title="More" subtitle="History, settings and your data" />
       <ScrollView contentContainerStyle={styles.content}>
+        <ListRow
+          title="History"
+          subtitle="Your recent workouts"
+          right={<Chevron />}
+          onPress={() => router.push('/more/history')}
+        />
         <Text style={styles.sectionTitle}>Appearance</Text>
         <View style={styles.card}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>

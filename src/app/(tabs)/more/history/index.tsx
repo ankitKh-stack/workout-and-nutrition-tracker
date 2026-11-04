@@ -2,7 +2,7 @@ import { router } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { ScrollView, Text, View } from 'react-native';
 
-import { Chevron, ErrorView, ListRow, PageHeader } from '@/components/ui';
+import { Chevron, ErrorView, ListRow } from '@/components/ui';
 import { getCalendarWorkouts } from '@/data/repository';
 import { isGrowth } from '@/domain/progress';
 import { formatChange, formatDateLong, formatTime, formatWeight } from '@/lib/format';
@@ -12,8 +12,8 @@ import { useSettings, useTheme } from '@/theme/settings';
 /** How many recent workouts the list shows. */
 const RECENT_LIMIT = 50;
 
-// History (SPEC.md 3.12): the most recent completed workouts, newest first.
-// Tapping one opens everything logged in it.
+// History (SPEC.md 3.12), opened from More: the most recent completed
+// workouts, newest first. Tapping one opens everything logged in it.
 export default function HistoryScreen() {
   const db = useSQLiteContext();
   const { styles, colors } = useTheme();
@@ -27,9 +27,7 @@ export default function HistoryScreen() {
   if (error) return <ErrorView message="Could not load your workouts." onRetry={reload} />;
 
   return (
-    <View style={styles.screen}>
-      <PageHeader title="History" subtitle="Your recent workouts" />
-      <ScrollView contentContainerStyle={styles.content}>
+    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
         {data && data.length === 0 ? (
           <View style={styles.card}>
             <Text style={styles.bodyStrong}>No workouts yet</Text>
@@ -50,10 +48,9 @@ export default function HistoryScreen() {
             status={formatChange(w.progress.result)}
             // Growth in the data hue, a drop or zero in grey, as on the Calendar.
             statusColor={isGrowth(w.progress.result) ? colors.accent : colors.faint}
-            onPress={() => router.push({ pathname: '/history/[workoutId]', params: { workoutId: w.id } })}
+            onPress={() => router.push({ pathname: '/more/history/[workoutId]', params: { workoutId: w.id } })}
           />
         ))}
-      </ScrollView>
-    </View>
+    </ScrollView>
   );
 }
