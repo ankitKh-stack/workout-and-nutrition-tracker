@@ -54,7 +54,7 @@ These terms are used throughout the spec. They are defined for a reader who has 
 - More stack: More (3.10) → History list (3.12) → Past workout (3.12).
 - Modal screens (presented over the current screen, dismissed with Cancel or the system back gesture): Name Your Day (3.2), Add exercise (3.4), Intensifier picker (3.6), Variation swap (3.7).
 - Every screen follows the loose visual inspiration: items are presented as a vertical list, each row has one clear entry field or one clear button, and density is similar to a typical tracking app (several rows visible at once). No colours, fonts or spacing values are specified; use the platform defaults or plain styles.
-- Every screen reads its data from storage when it gains focus, so that a change made on one screen is visible on any other screen the next time it is shown, with no manual refresh.
+- Every screen reads its data from storage when it gains focus, so that a change made on one screen is visible on any other screen the next time it is shown, with no manual refresh. The screen in front also reloads when the app comes back to the foreground, so a screen left open while the phone was locked shows current data.
 
 ---
 
@@ -140,7 +140,7 @@ These terms are used throughout the spec. They are defined for a reader who has 
 - Tap "+ Add exercise" → opens Add exercise (3.4). Allowed with or without a workout in progress.
 - Tap "Start workout" → creates an in-progress workout for this day dated today; the status line and button update immediately.
 - **Resume:** when the day's last workout was finished within the last 30 minutes and none is in progress, a "Resume workout finished 18:05" button appears above "Start workout". It puts that workout back in progress with all its sets, as if Finish had not been tapped. If the 30 minutes run out while the screen is open, tapping it shows "This workout ended more than 30 minutes ago, so it can no longer be resumed." and the button disappears.
-- **Auto-end:** a workout in progress with no activity (a set added or edited, a variation swapped) for over an hour is ended automatically the next time any screen loads. It is saved as finished at its last activity, so it is already past the resume window. A workout with nothing typed into any set is discarded instead of being saved with zero volume. (Reason: nothing runs in the background while the app is closed, so the check happens on the next read; an accidentally started workout should not leave a zero square on the calendar.)
+- **Auto-end:** a workout in progress with no activity (a set or intensifier added, edited or removed, a variation swapped, or the workout resumed) for over an hour is ended automatically the next time any screen loads, including when the app comes back to the foreground. It is saved as finished at its last activity, so it is already past the resume window. A workout with nothing typed into any set is discarded instead of being saved with zero volume. (Reason: nothing runs in the background while the app is closed, so the check happens on the next read; an accidentally started workout should not leave a zero square on the calendar.) "Finish workout" also checks first: if the workout has already ended this way, nothing is changed and the screen shows "This workout already ended on its own after an hour with no activity."
 - Tap an exercise row while a workout is in progress → opens Exercise logging (3.5) for that exercise.
 - Tap an exercise row while no workout is in progress → opens Exercise history (3.11), read-only. No workout is started and nothing is written. (Reason: the user often wants to check what they lifted last time without starting a workout; workouts start only from the "Start workout" button.)
 - Tap "Finish workout":
@@ -247,7 +247,7 @@ These terms are used throughout the spec. They are defined for a reader who has 
 - On open, `selectedVariationId` = the variation recorded for this exercise in `Workout.selectedVariations` if present, otherwise `Exercise.defaultVariationId`.
 - The set list shows `Set` records where `workoutId = current` and `variationId = selectedVariationId` and `intensifierId = null`, ordered by `position`, each followed by its `Intensifier` records (ordered by `position`) and each intensifier's child `Set`. Superset partner sets from other exercises are child sets whose `variationId` belongs to this exercise; show them as described above.
 - "Last time" = sets of the most recent completed workout that contains at least one set with `variationId = selectedVariationId`, listing that variation's normal sets as "reps × weight kg" (empty values shown as "—").
-- Only workouts with `status = in_progress` can be edited. Completed workouts are read-only (see section 9).
+- Only workouts with `status = in_progress` can be edited. Completed workouts are read-only (see section 9), unless resumed within 30 minutes of finishing (3.3).
 
 ---
 
@@ -276,7 +276,7 @@ These terms are used throughout the spec. They are defined for a reader who has 
 - Superset chosen but the day has only this one exercise: the partner list shows "No other exercises on this day yet. Add one below." above the New exercise field.
 - Superset chosen but this set already has a superset row: the Superset choice is shown disabled with the text "This set already has a superset". (Reason: the settled definition is that a superset combines exactly two exercises, so one set has at most one partner.)
 - Intensifiers can only be attached to normal sets. The "+ Intensifier" button does not appear on intensifier rows or on superset partner rows. (Reason: the settled rule is that a drop set attaches to a normal set; attaching intensifiers to intensifiers would make the parent of a partial rep ambiguous.)
-- Storage write fails: "Could not add. Try again." in the picker; nothing is added.
+- Storage write fails: "Could not add. Try again." in the picker; nothing is added. When a new exercise was created but pairing it failed, the exercise stays on the day and appears in the partner list so it can be picked; the error shows under the New exercise field.
 
 **Technical:** Each choice inserts, in one transaction, one `Intensifier { id, workoutId, type, parentSetId, partnerExerciseId (superset only), position }` and its one child `Set { id, workoutId, variationId, intensifierId, reps: null, weight: null, position: 0 }`.
 - Drop: child `variationId` = parent set's variation; child stores reps and weight.
@@ -411,7 +411,7 @@ These terms are used throughout the spec. They are defined for a reader who has 
 
 **Error states:** "Could not load your workouts." / "Could not load this workout." with "Try again".
 
-**Technical:** Reads only. The list uses the same data as the Calendar (volume and change computed on read). A variation is listed in the past workout when it has normal sets in it, in the day's exercise order.
+**Technical:** Reads only. The list uses the same data as the Calendar (volume and change computed on read); the past workout computes its change from its own day's workouts only. A variation is listed in the past workout when it has normal sets in it, in the day's exercise order.
 
 ---
 
@@ -701,7 +701,7 @@ The brief left the points below undecided. The provisional defaults were reviewe
 5. When two or more workouts are completed on the same date, the square shows the **darkest** of their levels, and the detail area lists each one.
 6. Bodyweight exercises logged with no weight contribute **0** to volume (weight × reps); no special handling.
 7. ~~Weight is labelled kg with no conversion.~~ Superseded: weight is shown in **kg or lb**, chosen on the More tab, and stored in kg (3.10).
-8. Completed workouts are **read-only**; their sets cannot be edited or deleted, and a completed workout cannot be deleted on its own (only by deleting its day).
+8. Completed workouts are **read-only**; their sets cannot be edited or deleted, and a completed workout cannot be deleted on its own (only by deleting its day). The one exception is **Resume** within 30 minutes of finishing (3.3), which puts the workout back in progress.
 9. Exercises **can be removed** (3.3), which also removes their logged sets. Exercises **can be renamed** and **reordered by dragging** (3.3), and days can be reordered by dragging (3.1). Variations still cannot be renamed or deleted.
 10. Each exercise and its variations **belong to one day basket**; progression is not shared between days.
 11. ~~An in-progress workout can only be finished, not discarded.~~ Superseded: a workout can be **resumed** within 30 minutes of finishing, and one inactive for over an hour is **ended automatically**; if nothing was typed into it, it is discarded (3.3).

@@ -38,9 +38,13 @@ export function KeyboardAwareScroll({ children, contentContainerStyle, ...rest }
   const ensureVisible = useCallback(() => {
     // Wait a frame so the layout (and the extra space) is in place before measuring.
     requestAnimationFrame(() => {
-      const input = TextInput.State.currentlyFocusedInput();
+      // No keyboard open: nothing to do. Checked first because on web there is
+      // never a keyboard event, and react-native-web's TextInput.State has no
+      // currentlyFocusedInput().
       const top = keyboardTop.current;
-      if (!input || top === null) return;
+      if (top === null) return;
+      const input = TextInput.State.currentlyFocusedInput();
+      if (!input) return;
       input.measureInWindow((_x, y, _w, h) => {
         const overlap = y + h + MARGIN - top;
         if (overlap > 0) scrollRef.current?.scrollTo({ y: offsetY.current + overlap, animated: true });

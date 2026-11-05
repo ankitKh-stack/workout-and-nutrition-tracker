@@ -28,29 +28,29 @@ export default function HistoryScreen() {
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-        {data && data.length === 0 ? (
-          <View style={styles.card}>
-            <Text style={styles.bodyStrong}>No workouts yet</Text>
-            <Text style={styles.muted}>Finish a workout and it shows up here.</Text>
-          </View>
-        ) : null}
-        {data?.map((w) => (
-          <ListRow
-            key={w.id}
-            title={w.dayName}
-            subtitle={`${formatDateLong(w.date)} · ${formatTime(w.startedAt)} · ${formatWeight(w.volume, unit)} ${unit}`}
-            right={
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <View style={{ width: 20, height: 20, borderRadius: 5, backgroundColor: colors.shades[w.progress.level] }} />
-                <Chevron />
-              </View>
-            }
-            status={formatChange(w.progress.result)}
-            // Growth in the data hue, a drop or zero in grey, as on the Calendar.
-            statusColor={isGrowth(w.progress.result) ? colors.accent : colors.faint}
-            onPress={() => router.push({ pathname: '/more/history/[workoutId]', params: { workoutId: w.id } })}
-          />
-        ))}
+      {data && data.length === 0 ? (
+        <View style={styles.card}>
+          <Text style={styles.bodyStrong}>No workouts yet</Text>
+          <Text style={styles.muted}>Finish a workout and it shows up here.</Text>
+        </View>
+      ) : null}
+      {data?.map((w) => (
+        <ListRow
+          key={w.id}
+          title={w.dayName}
+          subtitle={`${formatDateLong(w.date)} · ${formatTime(w.startedAt)} · ${formatWeight(w.volume, unit)} ${unit}`}
+          right={
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <View style={{ width: 20, height: 20, borderRadius: 5, backgroundColor: colors.shades[w.progress.level] }} />
+              <Chevron />
+            </View>
+          }
+          status={formatChange(w.progress.result)}
+          // Growth in the data hue, a drop or zero in grey, as on the Calendar.
+          statusColor={isGrowth(w.progress.result) ? colors.accent : colors.faint}
+          onPress={() => router.push({ pathname: '/more/history/[workoutId]', params: { workoutId: w.id } })}
+        />
+      ))}
     </ScrollView>
   );
 }
