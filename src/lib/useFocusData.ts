@@ -1,9 +1,13 @@
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
+import { AppState } from 'react-native';
 
 /**
  * Loads a screen's data from storage every time the screen gains focus, so a
- * change made on another screen is visible without a manual refresh.
+ * change made on another screen is visible without a manual refresh. The
+ * focused screen also reloads when the app comes back to the foreground, so a
+ * screen left open for a while shows current data (for example a workout that
+ * auto-ended in the meantime).
  */
 export function useFocusData<T>(load: () => Promise<T>, deps: unknown[]) {
   const [data, setData] = useState<T | undefined>(undefined);
@@ -26,6 +30,10 @@ export function useFocusData<T>(load: () => Promise<T>, deps: unknown[]) {
   useFocusEffect(
     useCallback(() => {
       reload();
+      const sub = AppState.addEventListener('change', (state) => {
+        if (state === 'active') reload();
+      });
+      return () => sub.remove();
     }, [reload]),
   );
 

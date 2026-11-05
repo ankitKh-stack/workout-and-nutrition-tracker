@@ -24,6 +24,8 @@ import { formatDateLong, formatTime, formatWeight, plural } from '@/lib/format';
 import { useFocusData } from '@/lib/useFocusData';
 import { useSettings, useTheme } from '@/theme/settings';
 
+const ENDED_MESSAGE = 'This workout already ended on its own after an hour with no activity.';
+
 // Day detail (SPEC.md 3.3): the day's exercises plus start/finish/resume workout,
 // rename, delete, renaming and removing exercises, and holding an exercise to
 // drag it into a new order.
@@ -116,7 +118,14 @@ export default function DayDetailScreen() {
     if (!day?.workout) return;
     setActionError(null);
     try {
-      const count = await countWorkoutSets(db, day.workout.id);
+      // Reload first: the screen may have been left open in the background past
+      // the auto-end hour, and then the workout has already ended.
+      const fresh = await reload();
+      if (!fresh?.workout) {
+        setActionError(ENDED_MESSAGE);
+        return;
+      }
+      const count = await countWorkoutSets(db, fresh.workout.id);
       if (count === 0) {
         const ok = await confirmAsync(
           'Save with zero volume?',
@@ -125,7 +134,11 @@ export default function DayDetailScreen() {
         );
         if (!ok) return;
       }
-      await finishWorkout(db, day.workout.id);
+      if (!(await finishWorkout(db, fresh.workout.id))) {
+        setActionError(ENDED_MESSAGE);
+        await reload();
+        return;
+      }
       setBanner('Workout saved');
       await reload();
     } catch {

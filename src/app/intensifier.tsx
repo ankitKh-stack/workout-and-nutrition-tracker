@@ -1,6 +1,6 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { View } from 'react-native';
 
 import { KeyboardAwareScroll } from '@/components/KeyboardAwareScroll';
@@ -33,34 +33,46 @@ export default function IntensifierScreen() {
 
   const [newName, setNewName] = useState('');
   const [addingNew, setAddingNew] = useState(false);
+  // Set at once (state only updates on the next render), so a fast double tap adds one exercise.
+  const busy = useRef(false);
 
   if (error) return <ErrorView message="Could not load this set." onRetry={reload} />;
   if (!data) return null;
 
-  async function add(type: IntensifierType, partnerExerciseId: string | null = null) {
+  /** Returns false when the intensifier could not be added (the error is shown). */
+  async function add(type: IntensifierType, partnerExerciseId: string | null = null): Promise<boolean> {
     setSaveError(null);
     try {
       const childId = await addIntensifier(db, setId, type, partnerExerciseId);
       // The new row's Reps field gets focus when the logging screen reloads.
       requestFocus(childId);
       router.back();
+      return true;
     } catch (e) {
       setSaveError(e instanceof ValidationError ? e.message : 'Could not add. Try again.');
+      return false;
     }
   }
 
   const canAddNew = newName.trim().length > 0 && !addingNew;
 
   async function addNew() {
-    if (!data || !canAddNew) return;
+    if (!data || !canAddNew || busy.current) return;
+    busy.current = true;
     setSaveError(null);
     setAddingNew(true);
     try {
       const exerciseId = await addExercise(db, data.dayId, newName);
-      await add('superset', exerciseId);
+      // If pairing fails, the new exercise still exists: reload so it shows in
+      // the list above and can be picked, and clear the field.
+      if (!(await add('superset', exerciseId))) {
+        setNewName('');
+        await reload();
+      }
     } catch (e) {
       setSaveError(e instanceof ValidationError ? e.message : 'Could not add. Try again.');
     }
+    busy.current = false;
     setAddingNew(false);
   }
 
@@ -69,7 +81,8 @@ export default function IntensifierScreen() {
   return (
     <KeyboardAwareScroll style={styles.screen} contentContainerStyle={styles.content}>
       <Stack.Screen options={{ title }} />
-      {saveError ? <InlineError>{saveError}</InlineError> : null}
+      {/* On the partner step the error shows under the New exercise field instead. */}
+      {saveError && step === 'choose' ? <InlineError>{saveError}</InlineError> : null}
       {step === 'choose' ? (
         <>
           <ListRow title="Drop set" subtitle="Lower the weight and keep going" style={mark(colors.kinds.drop)} onPress={() => add('drop')} />
@@ -102,7 +115,7 @@ export default function IntensifierScreen() {
           ))}
           {/* A new exercise is added to the day and paired with this set in one go. */}
           <View style={[styles.buttonRow, { alignItems: 'flex-start' }]}>
-            <View style={{ flex: 1 }}>
+            <View style={{ flex: 1, gap: 4 }}>
               <Field
                 value={newName}
                 onChangeText={(t) => {
@@ -115,6 +128,7 @@ export default function IntensifierScreen() {
                 onSubmitEditing={addNew}
                 accessibilityLabel="New exercise name"
               />
+              {saveError ? <InlineError>{saveError}</InlineError> : null}
             </View>
             <Button label="Add" variant="primary" onPress={addNew} disabled={!canAddNew} />
           </View>

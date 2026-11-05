@@ -247,7 +247,8 @@ test('an inactive workout with nothing typed in is discarded', async () => {
   await age(db, workout, 61);
   await listDays(db);
   assert.equal(await workoutRow(db, workout), null);
-  assert.equal((await getDataSummary(db)).sets, 0);
+  // Its rows go with it (through the foreign keys), not just out of the counts.
+  assert.deepEqual(await db.getFirstAsync('SELECT COUNT(*) AS n FROM workout_set'), { n: 0 });
 });
 
 test('a workout active within the hour keeps going', async () => {
@@ -293,4 +294,72 @@ test('workout detail lists every set, with superset rows under their set', async
   assert.deepEqual(detail.exercises.map((e) => e.label), ['Bench']); // Curl only appears as Bench's superset
   const [, set2] = detail.exercises[0].sets;
   assert.deepEqual(set2.intensifiers.map((i) => [i.type, i.partnerLabel]), [['drop', null], ['partial', null], ['superset', 'Curl']]);
+});
+
+test('auto-ending a workout leaves the day order alone', async () => {
+  const db = await openTestDb();
+  const { push, pull, legs } = await threeDays(db);
+  const bench = await addExercise(db, push, 'Bench');
+  const workout = await startWorkout(db, push);
+  await logSet(db, workout, (await getLoggingData(db, workout, bench))!.selectedVariationId, 10, 60);
+  await age(db, workout, 61);
+  await tick();
+  await reorderDays(db, [pull, legs, push]);
+  // Listing days ends the stale workout first; ending it is not a change, so the dragged order holds.
+  assert.deepEqual(await dayOrder(db), ['Pull', 'Legs', 'Push']);
+  assert.equal((await workoutRow(db, workout))!.status, 'completed');
+});
+
+test('removing a set counts as activity', async () => {
+  const db = await openTestDb();
+  const { workoutId, set2 } = await specWorkout(db);
+  await age(db, workoutId, 61);
+  await removeSet(db, set2);
+  await listDays(db);
+  assert.equal((await workoutRow(db, workoutId))!.status, 'in_progress');
+});
+
+test('only a finished workout can be resumed', async () => {
+  const db = await openTestDb();
+  const { workoutId } = await specWorkout(db);
+  await assert.rejects(resumeWorkout(db, workoutId), /cannot be resumed/); // still in progress
+  await assert.rejects(resumeWorkout(db, 'no-such-workout'), /cannot be resumed/);
+});
+
+test('Finish on a workout that already auto-ended changes nothing', async () => {
+  const db = await openTestDb();
+  const { workoutId } = await specWorkout(db);
+  const lastActivity = await age(db, workoutId, 61);
+  assert.equal(await finishWorkout(db, workoutId), false);
+  // Still ended at its last activity, so it stays out of the resume window.
+  assert.deepEqual(await workoutRow(db, workoutId), { status: 'completed', finished_at: lastActivity });
+});
+
+test('Finish on an empty workout that already auto-ended does not save it', async () => {
+  const db = await openTestDb();
+  const day = await createDay(db, 'Push');
+  const workout = await startWorkout(db, day);
+  await age(db, workout, 61);
+  assert.equal(await finishWorkout(db, workout), false);
+  assert.equal(await workoutRow(db, workout), null);
+});
+
+test('Finish on an active workout finishes it', async () => {
+  const db = await openTestDb();
+  const { workoutId } = await specWorkout(db);
+  assert.equal(await finishWorkout(db, workoutId), true);
+  assert.equal((await workoutRow(db, workoutId))!.status, 'completed');
+});
+
+test('workout detail shows its change against the previous workout of the day', async () => {
+  const db = await openTestDb();
+  const { dayId, workoutId, benchVar } = await specWorkout(db);
+  await finishWorkout(db, workoutId);
+  const next = await startWorkout(db, dayId);
+  await logSet(db, next, benchVar, 10, 186); // 1,860 → 1,860: no change
+  await finishWorkout(db, next);
+  const progress = (await getWorkoutDetail(db, next))!.progress!;
+  assert.equal(progress.result.kind, 'change');
+  assert.ok(progress.result.kind === 'change' && Math.abs(progress.result.percent) < 1e-9);
+  assert.equal((await getWorkoutDetail(db, workoutId))!.progress!.result.kind, 'first');
 });

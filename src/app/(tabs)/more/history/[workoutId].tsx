@@ -4,7 +4,7 @@ import { ScrollView, Text, View } from 'react-native';
 
 import { SetLines } from '@/components/SetLines';
 import { EmptyText, ErrorView } from '@/components/ui';
-import { getCalendarWorkouts, getWorkoutDetail } from '@/data/repository';
+import { getWorkoutDetail } from '@/data/repository';
 import { formatChange, formatDateLong, formatTime, formatWeight } from '@/lib/format';
 import { useFocusData } from '@/lib/useFocusData';
 import { useSettings, useTheme } from '@/theme/settings';
@@ -16,22 +16,17 @@ export default function WorkoutScreen() {
   const { styles } = useTheme();
   const { unit } = useSettings();
   const { workoutId } = useLocalSearchParams<{ workoutId: string }>();
-  const { data, error, reload } = useFocusData(async () => {
-    const workout = await getWorkoutDetail(db, workoutId);
-    const progress = (await getCalendarWorkouts(db)).find((w) => w.id === workoutId)?.progress ?? null;
-    return workout ? { workout, progress } : null;
-  }, [db, workoutId]);
+  const { data: workout, error, reload } = useFocusData(() => getWorkoutDetail(db, workoutId), [db, workoutId]);
 
   if (error) return <ErrorView message="Could not load this workout." onRetry={reload} />;
-  if (data === undefined) return <View style={styles.screen} />;
-  if (data === null) {
+  if (workout === undefined) return <View style={styles.screen} />;
+  if (workout === null) {
     return (
       <View style={styles.centered}>
         <EmptyText>This workout no longer exists.</EmptyText>
       </View>
     );
   }
-  const { workout, progress } = data;
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
@@ -45,7 +40,7 @@ export default function WorkoutScreen() {
           {formatWeight(workout.volume, unit)}
           <Text style={styles.small}> {unit} volume</Text>
         </Text>
-        {progress ? <Text style={styles.small}>{formatChange(progress.result)}</Text> : null}
+        {workout.progress ? <Text style={styles.small}>{formatChange(workout.progress.result)}</Text> : null}
       </View>
       {workout.exercises.length === 0 ? <EmptyText>No sets were logged in this workout.</EmptyText> : null}
       {workout.exercises.map((e) => (

@@ -397,12 +397,20 @@ export async function computeWorkoutVolume(db: SQLiteDatabase, workoutId: string
 }
 
 /** Volume is not stored: every screen computes it from the sets, so it always matches them. */
-export async function finishWorkout(db: SQLiteDatabase, workoutId: string): Promise<void> {
+/**
+ * Finishes a workout in progress. Returns false, and changes nothing, when it
+ * is no longer in progress: for example a screen left open in the background
+ * past the auto-end hour, where the workout has already been ended at its last
+ * activity (or discarded) by endInactiveWorkouts.
+ */
+export async function finishWorkout(db: SQLiteDatabase, workoutId: string): Promise<boolean> {
+  await endInactiveWorkouts(db);
   const t = now();
-  await db.runAsync(
-    "UPDATE workout SET status = 'completed', finished_at = ?, updated_at = ? WHERE id = ?",
+  const result = await db.runAsync(
+    "UPDATE workout SET status = 'completed', finished_at = ?, updated_at = ? WHERE id = ? AND status = 'in_progress'",
     t, t, workoutId,
   );
+  return result.changes > 0;
 }
 
 /** A finished workout can be resumed for this long after it ended. */
@@ -447,17 +455,16 @@ export async function endInactiveWorkouts(db: SQLiteDatabase): Promise<void> {
   );
   for (const w of open) {
     if (minutesSince(w.lastActivity) <= AUTO_END_MINUTES) continue;
+    // Single statements guarded on status, so two reads running this at the
+    // same time cannot end or discard the same workout twice.
     if (w.logged) {
       await db.runAsync(
-        "UPDATE workout SET status = 'completed', finished_at = ? WHERE id = ?",
+        "UPDATE workout SET status = 'completed', finished_at = ? WHERE id = ? AND status = 'in_progress'",
         w.lastActivity, w.id,
       );
     } else {
-      await db.withTransactionAsync(async () => {
-        await db.runAsync('DELETE FROM workout_set WHERE workout_id = ?', w.id);
-        await db.runAsync('DELETE FROM intensifier WHERE workout_id = ?', w.id);
-        await db.runAsync('DELETE FROM workout WHERE id = ?', w.id);
-      });
+      // Its sets and intensifiers go with it through the ON DELETE CASCADE foreign keys.
+      await db.runAsync("DELETE FROM workout WHERE id = ? AND status = 'in_progress'", w.id);
     }
   }
 }
@@ -470,6 +477,8 @@ export type WorkoutDetail = {
   startedAt: string;
   finishedAt: string | null;
   volume: number;
+  /** Change and shade against the previous workout of the day; null while in progress. */
+  progress: WorkoutProgress | null;
   /** Each variation with normal sets in this workout, in the day's exercise order. */
   exercises: { variationId: string; label: string; sets: NormalSetRow[] }[];
 };
@@ -502,6 +511,7 @@ export async function getWorkoutDetail(db: SQLiteDatabase, workoutId: string): P
     startedAt: w.started_at,
     finishedAt: w.finished_at,
     volume: await computeWorkoutVolume(db, workoutId),
+    progress: (await completedWorkouts(db, w.day_id)).find((c) => c.id === workoutId)?.progress ?? null,
     exercises,
   };
 }
@@ -1033,13 +1043,26 @@ export type CalendarWorkout = {
  */
 export async function getCalendarWorkouts(db: SQLiteDatabase): Promise<CalendarWorkout[]> {
   await endInactiveWorkouts(db);
+  return completedWorkouts(db, null);
+}
+
+/**
+ * Completed workouts with volume and progress, for every day or for one day.
+ * Progress only compares workouts of the same day, so one day's workouts are
+ * enough to work out any of them.
+ */
+async function completedWorkouts(db: SQLiteDatabase, dayId: string | null): Promise<CalendarWorkout[]> {
+  const dayFilter = dayId === null ? '' : ' AND w.day_id = ?';
+  const params = dayId === null ? [] : [dayId];
   const workouts = await db.getAllAsync<{ id: string; day_id: string; day_name: string; date: string; started_at: string }>(
     `SELECT w.id, w.day_id, d.name AS day_name, w.date, w.started_at
      FROM workout w JOIN day_basket d ON d.id = w.day_id
-     WHERE w.status = 'completed'`,
+     WHERE w.status = 'completed'${dayFilter}`,
+    ...params,
   );
   const sets = await db.getAllAsync<VolumeRow>(
-    `${VOLUME_QUERY} JOIN workout w ON w.id = s.workout_id WHERE w.status = 'completed'`,
+    `${VOLUME_QUERY} JOIN workout w ON w.id = s.workout_id WHERE w.status = 'completed'${dayFilter}`,
+    ...params,
   );
   const setsByWorkout = new Map<string, VolumeSetInput[]>();
   for (const r of sets) {
@@ -1073,6 +1096,7 @@ export type DataSummary = { days: number; exercises: number; workouts: number; s
 
 /** What is stored on the phone, for the More screen. */
 export async function getDataSummary(db: SQLiteDatabase): Promise<DataSummary> {
+  await endInactiveWorkouts(db);
   const row = await db.getFirstAsync<DataSummary>(
     `SELECT
        (SELECT COUNT(*) FROM day_basket) AS days,
