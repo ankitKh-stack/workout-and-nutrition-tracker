@@ -274,6 +274,7 @@ These terms are used throughout the spec. They are defined for a reader who has 
 - **Technical:**
   - a local notification from `expo-notifications`, scheduled for the time left and rescheduled on every change;
   - Android channel `rest-timer`, "Rest timer", HIGH importance, vibration `[0, 400, 200, 400]`, default sound;
+  - in Expo Go the channel can't be created (an Expo Go limitation), so alerts fall back to the library's default channel ("Miscellaneous") there; the installed app uses `rest-timer`;
   - the countdown is stored as an end time, so it stays right after the phone sleeps;
   - the rest length is the `restSeconds` setting (5.9);
   - nothing is stored in the workout.
