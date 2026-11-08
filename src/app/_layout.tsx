@@ -6,8 +6,13 @@ import { StatusBar } from 'expo-status-bar';
 import { useMemo } from 'react';
 
 import { DATABASE_NAME, initializeDatabase } from '@/data/schema';
+import { configureRestAlerts } from '@/lib/restAlert';
+import { RestTimerProvider } from '@/lib/restTimer';
 import { fonts } from '@/theme/palette';
 import { SettingsProvider, useTheme } from '@/theme/settings';
+
+// The rest timer's alert also sounds while the app is open.
+configureRestAlerts();
 
 export default function RootLayout() {
   // Render nothing until Inter and the icon font are ready, so no screen flashes in the
@@ -18,7 +23,9 @@ export default function RootLayout() {
   return (
     <SQLiteProvider databaseName={DATABASE_NAME} onInit={initializeDatabase}>
       <SettingsProvider>
-        <ThemedApp />
+        <RestTimerProvider>
+          <ThemedApp />
+        </RestTimerProvider>
       </SettingsProvider>
     </SQLiteProvider>
   );

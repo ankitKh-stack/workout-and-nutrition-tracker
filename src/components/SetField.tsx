@@ -18,6 +18,8 @@ type Props = {
   autoFocus?: boolean;
   /** Called with every valid value as typed, in the display unit (used to show a parent weight on partial rows). */
   onValueChange?: (value: number | null) => void;
+  /** Called when the field is left, with its valid value (null when empty or invalid). */
+  onBlurValue?: (value: number | null) => void;
   /** Called when a write fails, with a function that retries it. */
   onSaveError: (retry: () => Promise<void>) => void;
 };
@@ -28,7 +30,7 @@ type Props = {
  * was typed (SPEC.md 3.5, 6). Invalid values are shown but never saved.
  * Weights are typed in the chosen unit and stored in kg.
  */
-export function SetField({ setId, field, initial, autoFocus, onValueChange, onSaveError }: Props) {
+export function SetField({ setId, field, initial, autoFocus, onValueChange, onBlurValue, onSaveError }: Props) {
   const db = useSQLiteContext();
   const { unit } = useSettings();
   const shown = initial === null ? null : field === 'weight' ? toDisplayWeight(initial, unit) : initial;
@@ -74,7 +76,11 @@ export function SetField({ setId, field, initial, autoFocus, onValueChange, onSa
       <Field
         value={text}
         onChangeText={onChangeText}
-        onBlur={flush}
+        onBlur={() => {
+          flush();
+          const parsed = field === 'reps' ? parseReps(text) : parseWeight(text);
+          onBlurValue?.(parsed.ok ? parsed.value : null);
+        }}
         placeholder={field === 'reps' ? 'Reps' : unit}
         keyboardType={field === 'reps' ? 'number-pad' : 'decimal-pad'}
         autoFocus={autoFocus}

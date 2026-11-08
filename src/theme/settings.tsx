@@ -3,6 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { Appearance } from 'react-native';
 
 import { getSettings, saveSetting } from '@/data/repository';
+import { DEFAULT_REST_SECONDS } from '@/domain/restTimer';
 import type { Unit } from '@/lib/format';
 import { makeStyles } from '@/theme/styles';
 import { palettes, type Palette, type ThemeName } from '@/theme/palette';
@@ -10,8 +11,11 @@ import { palettes, type Palette, type ThemeName } from '@/theme/palette';
 type SettingsValue = {
   theme: ThemeName;
   unit: Unit;
+  /** Length of the rest countdown, in seconds. */
+  restSeconds: number;
   setTheme: (theme: ThemeName) => void;
   setUnit: (unit: Unit) => void;
+  setRestSeconds: (seconds: number) => void;
 };
 
 const SettingsContext = createContext<SettingsValue | null>(null);
@@ -26,12 +30,14 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [loaded, setLoaded] = useState(false);
   const [theme, setThemeState] = useState<ThemeName>(Appearance.getColorScheme() === 'dark' ? 'dark' : 'light');
   const [unit, setUnitState] = useState<Unit>('kg');
+  const [restSeconds, setRestState] = useState(DEFAULT_REST_SECONDS);
 
   useEffect(() => {
     getSettings(db)
       .then((s) => {
         if (s.theme) setThemeState(s.theme);
         if (s.unit) setUnitState(s.unit);
+        if (s.restSeconds) setRestState(s.restSeconds);
       })
       .catch((e) => console.warn(e))
       .finally(() => setLoaded(true));
@@ -52,7 +58,18 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     [db],
   );
 
-  const value = useMemo(() => ({ theme, unit, setTheme, setUnit }), [theme, unit, setTheme, setUnit]);
+  const setRestSeconds = useCallback(
+    (seconds: number) => {
+      setRestState(seconds);
+      saveSetting(db, 'restSeconds', String(seconds)).catch((e) => console.warn(e));
+    },
+    [db],
+  );
+
+  const value = useMemo(
+    () => ({ theme, unit, restSeconds, setTheme, setUnit, setRestSeconds }),
+    [theme, unit, restSeconds, setTheme, setUnit, setRestSeconds],
+  );
   if (!loaded) return null;
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;
 }
