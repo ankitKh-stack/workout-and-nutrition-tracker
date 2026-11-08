@@ -11,6 +11,8 @@ import {
   type ScrollViewProps,
 } from 'react-native';
 
+import { useRestBarHeight } from '@/lib/restTimer';
+
 /** Space kept between the focused field and the top of the keyboard. */
 const MARGIN = 24;
 
@@ -34,6 +36,10 @@ export function KeyboardAwareScroll({ children, contentContainerStyle, ...rest }
   const offsetY = useRef(0);
   const keyboardTop = useRef<number | null>(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  // The rest timer bar sits just above the keyboard, so fields must clear it too.
+  const barHeight = useRestBarHeight();
+  const barRef = useRef(barHeight);
+  barRef.current = barHeight;
 
   const ensureVisible = useCallback(() => {
     // Wait a frame so the layout (and the extra space) is in place before measuring.
@@ -46,7 +52,7 @@ export function KeyboardAwareScroll({ children, contentContainerStyle, ...rest }
       const input = TextInput.State.currentlyFocusedInput();
       if (!input) return;
       input.measureInWindow((_x, y, _w, h) => {
-        const overlap = y + h + MARGIN - top;
+        const overlap = y + h + MARGIN + barRef.current - top;
         if (overlap > 0) scrollRef.current?.scrollTo({ y: offsetY.current + overlap, animated: true });
       });
     });
@@ -64,10 +70,18 @@ export function KeyboardAwareScroll({ children, contentContainerStyle, ...rest }
     const onHide = () => {
       keyboardTop.current = null;
       setKeyboardHeight(0);
+      // On Android, Back closes the keyboard but leaves the field focused, so the
+      // field never "loses focus" (no save-on-blur, no rest prompt). Blur it here.
+      if (Platform.OS === 'android') TextInput.State.currentlyFocusedInput()?.blur();
     };
     const subs = [Keyboard.addListener(showEvent, onShow), Keyboard.addListener(hideEvent, onHide)];
     return () => subs.forEach((s) => s.remove());
   }, [ensureVisible]);
+
+  // The bar can appear (a rest prompt) after a field was scrolled into view: scroll again.
+  useEffect(() => {
+    if (barHeight > 0) ensureVisible();
+  }, [barHeight, ensureVisible]);
 
   return (
     <EnsureVisibleContext.Provider value={ensureVisible}>
@@ -78,7 +92,7 @@ export function KeyboardAwareScroll({ children, contentContainerStyle, ...rest }
         onScroll={(e: NativeSyntheticEvent<NativeScrollEvent>) => {
           offsetY.current = e.nativeEvent.contentOffset.y;
         }}
-        contentContainerStyle={[contentContainerStyle, { paddingBottom: 16 + keyboardHeight }]}
+        contentContainerStyle={[contentContainerStyle, { paddingBottom: 16 + keyboardHeight + (keyboardHeight > 0 ? barHeight : 0) }]}
         {...rest}
       >
         {children}

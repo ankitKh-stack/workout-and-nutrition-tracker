@@ -141,6 +141,7 @@ These terms are used throughout the spec. They are defined for a reader who has 
 - Tap "Start workout" → creates an in-progress workout for this day dated today; the status line and button update immediately.
 - **Resume:** when the day's last workout was finished within the last 30 minutes and none is in progress, a "Resume workout finished 18:05" button appears above "Start workout". It puts that workout back in progress with all its sets, as if Finish had not been tapped. If the 30 minutes run out while the screen is open, tapping it shows "This workout ended more than 30 minutes ago, so it can no longer be resumed." and the button disappears.
 - **Auto-end:** a workout in progress with no activity (a set or intensifier added, edited or removed, a variation swapped, or the workout resumed) for over an hour is ended automatically the next time any screen loads, including when the app comes back to the foreground. It is saved as finished at its last activity, so it is already past the resume window. A workout with nothing typed into any set is discarded instead of being saved with zero volume. (Reason: nothing runs in the background while the app is closed, so the check happens on the next read; an accidentally started workout should not leave a zero square on the calendar.) "Finish workout" also checks first: if the workout has already ended this way, nothing is changed and the screen shows "This workout already ended on its own after an hour with no activity."
+- **Rest timer:** a running rest countdown for this day (3.5) shows in a bar above the Start/Finish button. Finishing the workout clears it and cancels its alert.
 - Tap an exercise row while a workout is in progress → opens Exercise logging (3.5) for that exercise.
 - Tap an exercise row while no workout is in progress → opens Exercise history (3.11), read-only. No workout is started and nothing is written. (Reason: the user often wants to check what they lifted last time without starting a workout; workouts start only from the "Start workout" button.)
 - Tap "Finish workout":
@@ -250,6 +251,33 @@ These terms are used throughout the spec. They are defined for a reader who has 
 - Only workouts with `status = in_progress` can be edited. Completed workouts are read-only (see section 9), unless resumed within 30 minutes of finishing (3.3).
 
 ---
+
+**Rest timer (added 8 Nov 2026; design: docs/superpowers/specs/2026-11-08-rest-timer-design.md):**
+- **The prompt.** When a set becomes done for the first time (reps and weight both filled in, and the user moves off a field), a bar at the bottom of the screen shows "Set 2 done · Start 2:00 rest?" with **Start** and **✕**.
+  - It hides itself after 10 seconds.
+  - A set with drop set, partial reps or superset rows prompts only when its **last** row is done, so the rest comes after the whole set (decided 8 Nov 2026). A partial reps row is done once its reps are filled in.
+  - A superset row shown on the partner exercise's screen prompts when it is done.
+  - Editing a set that was already done, or reopening the screen, does not prompt again.
+- **The countdown.** **Start** turns the bar into "Rest 1:59" with **−15s**, **+15s** and **Skip**.
+  - The time left never goes below 0:00.
+  - Only one countdown runs at a time.
+  - Another done set during a countdown shows "Set 3 done · Restart rest?" for 10 seconds, then the bar returns to the countdown.
+- **At 0:00:**
+  - the phone vibrates and plays its notification sound, with a "Rest over" / "Time for your next set." notification;
+  - this works even with the screen locked or the app closed;
+  - the bar shows "Rest over" for 5 seconds.
+- **Where the bar shows:** the countdown lives app-wide, and the bar shows on the logging and day screens for that day.
+- **When it's cancelled:**
+  - finishing the workout clears the countdown and cancels its alert;
+  - so does the workout no longer being in progress (auto-ended or discarded).
+- **Permission:** the phone asks for notification permission the first time **Start** is tapped. If it's denied, the countdown still runs and the phone vibrates at 0:00 while the app is open.
+- **Technical:**
+  - a local notification from `expo-notifications`, scheduled for the time left and rescheduled on every change;
+  - Android channel `rest-timer`, "Rest timer", HIGH importance, vibration `[0, 400, 200, 400]`, default sound;
+  - in Expo Go the channel can't be created (an Expo Go limitation), so alerts fall back to the library's default channel ("Miscellaneous") there; the installed app uses `rest-timer`;
+  - the countdown is stored as an end time, so it stays right after the phone sleeps;
+  - the rest length is the `restSeconds` setting (5.9);
+  - nothing is stored in the workout.
 
 **Last time beside each set (added in the restyle):** each normal set's card shows, at its top right, the set with the same number from the last completed workout on this variation ("Last 10 × 60 kg"), so the comparison sits beside the fields being filled in. The variation card then shows only "Last done 21 Oct · 3 sets". Each field has its label above it ("Reps", "Weight (kg)").
 
@@ -370,6 +398,8 @@ These terms are used throughout the spec. They are defined for a reader who has 
 **Summary:** A settings screen with two pill toggles: Theme (Light / Dark) and Weight (kg / lb). Both take effect immediately on every screen and are remembered after a restart. Switching the unit changes how weights are shown and typed; it never changes stored data.
 
 **What the user sees:** Large title "More" with "History, settings and your data" under it; a "History" row ("Your recent workouts", with a › arrow) that opens History (3.12); a card "Theme" with a Light | Dark pill toggle; a card "Weight" with a kg | lb pill toggle and the note "Switching converts every weight you see, including past workouts. Your logged data is not changed."
+
+**Rest timer:** a card "Rest between sets" with "− 2:00 +", in 15-second steps from 0:30 to 5:00, remembered after a restart. When notification permission was denied, the card also says "Notifications are off, so the rest timer can only vibrate while the app is open."
 
 **Your data:** a third card shows counts of days, exercises, completed workouts and sets logged in them, with "Stored only on this phone. Nothing is uploaded."
 
@@ -618,8 +648,8 @@ Examples: Vp 1,000, V 1,200 → +20%. Vp 1,200, V 2,500 → +108.3%. Vp 1,000, V
 
 ### 5.9 Settings
 
-- `key` — `theme` or `unit`.
-- `value` — `light` / `dark`, or `kg` / `lb`.
+- `key` — `theme`, `unit` or `restSeconds`.
+- `value` — `light` / `dark`, `kg` / `lb`, or the rest length in seconds (a whole number from 30 to 300; any other stored value is ignored and the default of 120 is used).
 
 Relation: settings are global to the app and link to no other record. Added in schema version 2; the upgrade only creates this table and keeps all existing data.
 

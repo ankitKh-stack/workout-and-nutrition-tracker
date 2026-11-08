@@ -22,9 +22,11 @@ type ButtonProps = {
   disabled?: boolean;
   style?: StyleProp<ViewStyle>;
   compact?: boolean;
+  /** What a screen reader says, when the label alone is a symbol like "−". */
+  accessibilityLabel?: string;
 };
 
-export function Button({ label, onPress, variant = 'secondary', icon, disabled, style, compact }: ButtonProps) {
+export function Button({ label, onPress, variant = 'secondary', icon, disabled, style, compact, accessibilityLabel }: ButtonProps) {
   const { styles, colors } = useTheme();
   const textColor =
     variant === 'primary'
@@ -37,6 +39,7 @@ export function Button({ label, onPress, variant = 'secondary', icon, disabled, 
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
       accessibilityState={{ disabled: !!disabled }}
       onPress={onPress}
       disabled={disabled}

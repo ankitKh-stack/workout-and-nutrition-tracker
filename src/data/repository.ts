@@ -10,6 +10,7 @@ import {
   type VolumeSetInput,
   type WorkoutProgress,
 } from '@/domain/progress';
+import { MAX_REST_SECONDS, MIN_REST_SECONDS } from '@/domain/restTimer';
 import { localDateString, type Unit } from '@/lib/format';
 import type { ThemeName } from '@/theme/palette';
 
@@ -550,6 +551,8 @@ export type NormalSetRow = {
 export type PartnerSetRow = {
   setId: string;
   label: string;
+  /** The number of the set it was paired with, e.g. 2 for "Set 2". */
+  setNumber: number;
   reps: number | null;
   weight: number | null;
 };
@@ -692,6 +695,7 @@ export async function getLoggingData(
     partnerSets.push({
       setId: p.id,
       label: `Superset with ${p.parent_exercise}, Set ${number}`,
+      setNumber: number,
       reps: p.reps,
       weight: p.weight,
     });
@@ -1107,20 +1111,22 @@ export async function getDataSummary(db: SQLiteDatabase): Promise<DataSummary> {
   return row ?? { days: 0, exercises: 0, workouts: 0, sets: 0 };
 }
 
-export type StoredSettings = { theme: ThemeName | null; unit: Unit | null };
+export type StoredSettings = { theme: ThemeName | null; unit: Unit | null; restSeconds: number | null };
 
 export async function getSettings(db: SQLiteDatabase): Promise<StoredSettings> {
   const rows = await db.getAllAsync<{ key: string; value: string }>('SELECT key, value FROM settings');
   const map = new Map(rows.map((r) => [r.key, r.value]));
   const theme = map.get('theme');
   const unit = map.get('unit');
+  const rest = Number(map.get('restSeconds'));
   return {
     theme: theme === 'light' || theme === 'dark' ? theme : null,
     unit: unit === 'kg' || unit === 'lb' ? unit : null,
+    restSeconds: Number.isInteger(rest) && rest >= MIN_REST_SECONDS && rest <= MAX_REST_SECONDS ? rest : null,
   };
 }
 
-export async function saveSetting(db: SQLiteDatabase, key: 'theme' | 'unit', value: string): Promise<void> {
+export async function saveSetting(db: SQLiteDatabase, key: 'theme' | 'unit' | 'restSeconds', value: string): Promise<void> {
   await db.runAsync(
     'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
     key, value,

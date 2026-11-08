@@ -1,10 +1,11 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import { KeyboardAwareScroll } from '@/components/KeyboardAwareScroll';
+import { RestTimerBar } from '@/components/RestTimerBar';
 import { SetField } from '@/components/SetField';
 import { Button, EmptyText, ErrorView } from '@/components/ui';
 import {
@@ -17,9 +18,11 @@ import {
   type IntensifierRow,
   type NormalSetRow,
 } from '@/data/repository';
+import { newlyDone, offersRest, type RowKind } from '@/domain/restTimer';
 import { confirmAsync } from '@/lib/dialogs';
 import { formatDateShort, formatNumber, formatWeight, plural, toDisplayWeight } from '@/lib/format';
 import { useFocusData } from '@/lib/useFocusData';
+import { useRestTimer } from '@/lib/restTimer';
 import { drainWrites, requestFocus, takeFocusRequest } from '@/lib/writeQueue';
 import { fonts } from '@/theme/palette';
 import { useSettings, useTheme } from '@/theme/settings';
@@ -50,6 +53,13 @@ export default function LogScreen() {
     setFocusId(takeFocusRequest());
     return d;
   }, [db, workoutId, exerciseId]);
+
+  const rest = useRestTimer();
+  const { cancelFor } = rest;
+  // A workout that ended (finished, auto-ended or discarded) has no rest to time.
+  useEffect(() => {
+    if (data === null || (data && data.workoutStatus !== 'in_progress')) cancelFor({ workoutId });
+  }, [data, workoutId, cancelFor]);
 
   if (error) return <ErrorView message="Could not load this exercise." onRetry={reload} />;
   if (data === undefined) return <View style={styles.screen} />;
@@ -171,13 +181,22 @@ export default function LogScreen() {
             }
             onRemove={() => onRemoveSet(set)}
             onRemoveIntensifier={(i) => run(() => removeIntensifier(db, i.intensifierId))}
+            onRest={(n) => rest.offer({ dayId: data.dayId, workoutId }, n)}
           />
         ))}
 
         {data.partnerSets.map((p) => (
           <View key={`${unit}:${p.setId}:${p.reps}:${p.weight}`} style={[styles.card, edge(colors.kinds.superset)]}>
             <Text style={[styles.bodyStrong, { color: colors.kinds.superset }]}>{p.label}</Text>
-            <FieldPair setId={p.setId} reps={p.reps} weight={p.weight} onSaveError={onSaveError} />
+            <FieldPair
+              setId={p.setId}
+              reps={p.reps}
+              weight={p.weight}
+              onSaveError={onSaveError}
+              kind="superset"
+              // The parent set's other rows are on its own exercise's screen; from here the pair ends with this row.
+              onDone={() => rest.offer({ dayId: data.dayId, workoutId }, p.setNumber)}
+            />
           </View>
         ))}
 
@@ -191,11 +210,29 @@ export default function LogScreen() {
           }
         />
       </KeyboardAwareScroll>
+      <RestTimerBar dayId={data.dayId} />
     </View>
   );
 }
 
 const edge = (color: string) => ({ borderLeftWidth: 3, borderLeftColor: color });
+
+/**
+ * Calls onDone once, when leaving a field leaves the row with its values for
+ * the first time (SPEC.md 3.5 rest timer). Seeded from the stored values, so
+ * a row that was already done never reports again.
+ */
+function useRowDone(kind: RowKind, reps: number | null, weight: number | null, onDone?: () => void) {
+  const values = useRef({ reps, weight });
+  const wasDone = useRef(newlyDone(false, kind, reps, weight));
+  return (field: 'reps' | 'weight') => (value: number | null) => {
+    values.current[field] = value;
+    if (newlyDone(wasDone.current, kind, values.current.reps, values.current.weight)) {
+      wasDone.current = true;
+      onDone?.();
+    }
+  };
+}
 
 /** Reps and weight side by side, each with its label above the field. */
 function FieldPair({
@@ -205,6 +242,8 @@ function FieldPair({
   autoFocus,
   onWeightChange,
   onSaveError,
+  kind = 'normal',
+  onDone,
 }: {
   setId: string;
   reps: number | null;
@@ -212,20 +251,65 @@ function FieldPair({
   autoFocus?: boolean;
   onWeightChange?: (value: number | null) => void;
   onSaveError: (retry: () => Promise<void>) => void;
+  kind?: RowKind;
+  /** Called once, when this row is done for the first time. */
+  onDone?: () => void;
 }) {
   const { styles } = useTheme();
   const { unit } = useSettings();
+  const left = useRowDone(kind, reps, weight, onDone);
   return (
     <View style={{ flexDirection: 'row', gap: 10 }}>
       <View style={{ flex: 1, gap: 4 }}>
         <Text style={styles.label}>Reps</Text>
-        <SetField setId={setId} field="reps" initial={reps} autoFocus={autoFocus} onSaveError={onSaveError} />
+        <SetField
+          setId={setId}
+          field="reps"
+          initial={reps}
+          autoFocus={autoFocus}
+          onBlurValue={left('reps')}
+          onSaveError={onSaveError}
+        />
       </View>
       <View style={{ flex: 1, gap: 4 }}>
         <Text style={styles.label}>Weight ({unit})</Text>
-        <SetField setId={setId} field="weight" initial={weight} onValueChange={onWeightChange} onSaveError={onSaveError} />
+        <SetField
+          setId={setId}
+          field="weight"
+          initial={weight}
+          onValueChange={onWeightChange}
+          onBlurValue={left('weight')}
+          onSaveError={onSaveError}
+        />
       </View>
     </View>
+  );
+}
+
+/** The reps field of a partial reps row, which is done with reps alone. */
+function PartialRepsField({
+  setId,
+  reps,
+  autoFocus,
+  onSaveError,
+  onDone,
+}: {
+  setId: string;
+  reps: number | null;
+  autoFocus?: boolean;
+  onSaveError: (retry: () => Promise<void>) => void;
+  onDone?: () => void;
+}) {
+  const left = useRowDone('partial', reps, null, onDone);
+  return (
+    <SetField
+      setId={setId}
+      field="reps"
+      initial={reps}
+      autoFocus={autoFocus}
+      onBlurValue={left('reps')}
+      onSaveError={onSaveError}
+    />
   );
 }
 
@@ -238,14 +322,19 @@ type SetBlockProps = {
   onAddIntensifier: () => void;
   onRemove: () => void;
   onRemoveIntensifier: (i: IntensifierRow) => void;
+  /** Offer a rest after this set number. */
+  onRest: (setNumber: number) => void;
 };
 
 /** A normal set: last time's numbers beside its name, its fields, then its intensifier rows. */
-function SetBlock({ set, last, focusId, onSaveError, onAddIntensifier, onRemove, onRemoveIntensifier }: SetBlockProps) {
+function SetBlock({ set, last, focusId, onSaveError, onAddIntensifier, onRemove, onRemoveIntensifier, onRest }: SetBlockProps) {
   const { styles, colors } = useTheme();
   const { unit } = useSettings();
   // Tracked here, in the display unit, so partial-reps rows show the parent weight as it is typed.
   const [parentWeight, setParentWeight] = useState(set.weight === null ? null : toDisplayWeight(set.weight, unit));
+  // The rest comes after the set's last row: the set itself, or its last drop, partial or superset row.
+  const rowCount = 1 + set.intensifiers.length;
+  const restAfter = (rowIndex: number) => (offersRest(rowIndex, rowCount) ? () => onRest(set.number) : undefined);
 
   return (
     <View style={styles.card}>
@@ -264,8 +353,9 @@ function SetBlock({ set, last, focusId, onSaveError, onAddIntensifier, onRemove,
         autoFocus={focusId === set.setId}
         onWeightChange={setParentWeight}
         onSaveError={onSaveError}
+        onDone={restAfter(0)}
       />
-      {set.intensifiers.map((i) => {
+      {set.intensifiers.map((i, index) => {
         // Each kind has its own mark: a 3px edge and its label in the kind's colour.
         const color = colors.kinds[i.type];
         const label = i.type === 'drop' ? 'Drop set' : i.type === 'partial' ? 'Partial reps' : `Superset: ${i.partnerLabel}`;
@@ -290,12 +380,12 @@ function SetBlock({ set, last, focusId, onSaveError, onAddIntensifier, onRemove,
               <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-end' }}>
                 <View style={{ flex: 1, gap: 4 }}>
                   <Text style={styles.label}>Reps</Text>
-                  <SetField
+                  <PartialRepsField
                     setId={i.childSetId}
-                    field="reps"
-                    initial={i.reps}
+                    reps={i.reps}
                     autoFocus={focusId === i.childSetId}
                     onSaveError={onSaveError}
+                    onDone={restAfter(index + 1)}
                   />
                 </View>
                 <View style={{ flex: 1, minHeight: 44, justifyContent: 'center' }}>
@@ -311,6 +401,8 @@ function SetBlock({ set, last, focusId, onSaveError, onAddIntensifier, onRemove,
                 weight={i.weight}
                 autoFocus={focusId === i.childSetId}
                 onSaveError={onSaveError}
+                kind={i.type}
+                onDone={restAfter(index + 1)}
               />
             )}
           </View>

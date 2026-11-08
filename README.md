@@ -15,6 +15,7 @@ Nutrition tracking is planned for a later version; the Nutrition tab is a placeh
 - **Resume and auto-end.** Resume a workout up to 30 minutes after finishing it. A workout left with no activity for over an hour ends by itself (and is discarded if nothing was logged).
 - **History.** More → History lists your recent workouts; tap one to see every set. Tap an exercise when no workout is running to see its last five workouts.
 - **Calendar.** One month at a time, each day shaded by the change in volume (weight × reps) against the previous workout of the same day. Home shows the current week in the same shading.
+- **Rest timer.** After a set, a bar offers "Start 2:00 rest?"; the countdown has ±15s and Skip, and at zero the phone vibrates and sounds, even when locked. The default rest is set on More.
 - **Settings.** Light or dark theme, and weights in kg or lb. Weights are always stored in kg, so switching never changes your data.
 
 ## Getting started
@@ -45,6 +46,7 @@ Then scan the QR code with **Expo Go** on your phone (Android or iOS), or press 
 
 - **Expo SDK 58** with **Expo Router** (file-based navigation, bottom tabs)
 - **expo-sqlite** for local storage, with versioned schema migrations
+- **expo-notifications** for the rest timer's alert (local notifications only)
 - **TypeScript**, **Inter** typeface (`@expo-google-fonts/inter`) and Ionicons
 
 ## Project structure

@@ -2,9 +2,11 @@ import { router } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { ScrollView, Text, View } from 'react-native';
 
-import { Chevron, ListRow, PageHeader, Segmented } from '@/components/ui';
+import { Button, Chevron, ListRow, PageHeader, Segmented } from '@/components/ui';
 import { getDataSummary } from '@/data/repository';
+import { formatClock, MAX_REST_SECONDS, MIN_REST_SECONDS, stepRest } from '@/domain/restTimer';
 import { formatNumber, formatWeight } from '@/lib/format';
+import { useRestTimer } from '@/lib/restTimer';
 import { useFocusData } from '@/lib/useFocusData';
 import { useSettings, useTheme } from '@/theme/settings';
 
@@ -13,8 +15,9 @@ import { useSettings, useTheme } from '@/theme/settings';
 export default function MoreScreen() {
   const db = useSQLiteContext();
   const { styles, colors } = useTheme();
-  const { theme, setTheme, unit, setUnit } = useSettings();
+  const { theme, setTheme, unit, setUnit, restSeconds, setRestSeconds } = useSettings();
   const { data: summary } = useFocusData(() => getDataSummary(db), [db]);
+  const { alertsAllowed } = useRestTimer();
 
   const stat = (label: string, value: number | undefined) => (
     <View style={{ flex: 1, gap: 2 }}>
@@ -73,6 +76,34 @@ export default function MoreScreen() {
             />
           </View>
           <Text style={styles.muted}>Switching changes how every weight is shown, past workouts included. Logged data stays as it is.</Text>
+        </View>
+
+        <Text style={styles.sectionTitle}>Rest timer</Text>
+        <View style={styles.card}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.bodyStrong}>Rest between sets</Text>
+              <Text style={styles.small}>Saved on this phone</Text>
+            </View>
+            <Button
+              label="−"
+              compact
+              accessibilityLabel="Shorter rest"
+              disabled={restSeconds <= MIN_REST_SECONDS}
+              onPress={() => setRestSeconds(stepRest(restSeconds, -1))}
+            />
+            <Text style={[styles.title, styles.number, { minWidth: 52, textAlign: 'center' }]}>{formatClock(restSeconds)}</Text>
+            <Button
+              label="+"
+              compact
+              accessibilityLabel="Longer rest"
+              disabled={restSeconds >= MAX_REST_SECONDS}
+              onPress={() => setRestSeconds(stepRest(restSeconds, 1))}
+            />
+          </View>
+          {alertsAllowed === false ? (
+            <Text style={styles.small}>Notifications are off, so the rest timer can only vibrate while the app is open.</Text>
+          ) : null}
         </View>
 
         <Text style={styles.sectionTitle}>Your data</Text>

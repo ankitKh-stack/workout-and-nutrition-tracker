@@ -18,6 +18,7 @@ import {
   getDayDetail,
   getExerciseDeletionCounts,
   getExerciseHistory,
+  getSettings,
   getLoggingData,
   getWorkoutDetail,
   listDays,
@@ -27,6 +28,7 @@ import {
   reorderDays,
   reorderExercises,
   resumeWorkout,
+  saveSetting,
   startWorkout,
   updateSetField,
   ValidationError,
@@ -362,4 +364,13 @@ test('workout detail shows its change against the previous workout of the day', 
   assert.equal(progress.result.kind, 'change');
   assert.ok(progress.result.kind === 'change' && Math.abs(progress.result.percent) < 1e-9);
   assert.equal((await getWorkoutDetail(db, workoutId))!.progress!.result.kind, 'first');
+});
+
+test('the rest length is remembered, and a bad stored value is ignored', async () => {
+  const db = await openTestDb();
+  assert.equal((await getSettings(db)).restSeconds, null);
+  await saveSetting(db, 'restSeconds', '150');
+  assert.equal((await getSettings(db)).restSeconds, 150);
+  await saveSetting(db, 'restSeconds', '9999');
+  assert.equal((await getSettings(db)).restSeconds, null); // outside 30–300
 });

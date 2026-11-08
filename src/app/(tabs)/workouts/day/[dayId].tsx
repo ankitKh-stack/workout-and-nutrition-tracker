@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { ReorderableList } from '@/components/ReorderableList';
+import { RestTimerBar } from '@/components/RestTimerBar';
 import { Button, Chevron, EmptyText, ErrorView, InlineError, ListRow } from '@/components/ui';
 import {
   countWorkoutSets,
@@ -20,6 +21,7 @@ import {
   ValidationError,
 } from '@/data/repository';
 import { confirmAsync } from '@/lib/dialogs';
+import { useRestTimer } from '@/lib/restTimer';
 import { formatDateLong, formatTime, formatWeight, plural } from '@/lib/format';
 import { useFocusData } from '@/lib/useFocusData';
 import { useSettings, useTheme } from '@/theme/settings';
@@ -41,6 +43,12 @@ export default function DayDetailScreen() {
   const [dragging, setDragging] = useState(false);
   const [banner, setBanner] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  const { cancelFor } = useRestTimer();
+  // No workout in progress (finished, auto-ended or discarded), or the day is gone: no rest to time.
+  useEffect(() => {
+    if (day === null || (day && !day.workout)) cancelFor({ dayId });
+  }, [day, dayId, cancelFor]);
 
   // The "Workout saved" banner stays for 3 seconds.
   useEffect(() => {
@@ -139,6 +147,7 @@ export default function DayDetailScreen() {
         await reload();
         return;
       }
+      cancelFor({ workoutId: fresh.workout.id });
       setBanner('Workout saved');
       await reload();
     } catch {
@@ -328,6 +337,7 @@ export default function DayDetailScreen() {
           />
         ) : null}
       </ScrollView>
+      <RestTimerBar dayId={dayId} />
       <View style={[styles.content, { paddingBottom: 12 }]}>
         {day.workout ? (
           <Button label="Finish workout" icon="checkmark" variant="primary" onPress={onFinish} />
