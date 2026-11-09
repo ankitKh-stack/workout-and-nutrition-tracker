@@ -1,24 +1,27 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 
+import { NoteWindow } from '@/components/NoteWindow';
 import { SetLines } from '@/components/SetLines';
 import { EmptyText, ErrorView, Segmented } from '@/components/ui';
-import { getExerciseHistory } from '@/data/repository';
+import { getExerciseHistory, setVariationNote } from '@/data/repository';
 import { formatDateLong, formatWeight } from '@/lib/format';
 import { useFocusData } from '@/lib/useFocusData';
 import { useSettings, useTheme } from '@/theme/settings';
 
 // Exercise history (read-only). Opened by tapping an exercise when no workout
 // is in progress, so the user can look up what they lifted last time without
-// starting a workout. Nothing on this screen writes to storage.
+// starting a workout. The only thing that can be changed here is the
+// variation's note; nothing else on this screen writes to storage.
 export default function HistoryScreen() {
   const db = useSQLiteContext();
   const { styles } = useTheme();
   const { unit } = useSettings();
   const { exerciseId } = useLocalSearchParams<{ exerciseId: string }>();
   const [variationId, setVariationId] = useState<string | null>(null);
+  const [noteOpen, setNoteOpen] = useState(false);
   const { data, error, reload } = useFocusData(
     () => getExerciseHistory(db, exerciseId, variationId),
     [db, exerciseId, variationId],
@@ -50,6 +53,21 @@ export default function HistoryScreen() {
         </ScrollView>
       ) : null}
 
+      {data.note !== null ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Note, ${data.note}`}
+          accessibilityHint="Opens the note"
+          onPress={() => setNoteOpen(true)}
+          style={({ pressed }) => [styles.card, { gap: 4 }, pressed && styles.pressed]}
+        >
+          <Text style={styles.label}>Note</Text>
+          <Text style={styles.body} numberOfLines={3}>
+            {data.note}
+          </Text>
+        </Pressable>
+      ) : null}
+
       <Text style={styles.small}>
         {data.workouts.length === 0
           ? 'No logged workouts for this variation yet.'
@@ -70,6 +88,18 @@ export default function HistoryScreen() {
       ))}
 
       <Text style={styles.small}>To log sets, tap Start workout on the day screen.</Text>
+      {noteOpen ? (
+        <NoteWindow
+          title={data.variations.find((v) => v.id === data.selectedVariationId)?.name ?? data.exerciseName}
+          note={data.note}
+          startEditing={false}
+          onSave={async (text) => {
+            await setVariationNote(db, data.selectedVariationId, text);
+            await reload();
+          }}
+          onClose={() => setNoteOpen(false)}
+        />
+      ) : null}
     </ScrollView>
   );
 }

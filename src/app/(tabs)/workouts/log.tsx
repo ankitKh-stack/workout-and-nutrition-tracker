@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import { KeyboardAwareScroll } from '@/components/KeyboardAwareScroll';
+import { NoteWindow } from '@/components/NoteWindow';
 import { RestTimerBar } from '@/components/RestTimerBar';
 import { SetField } from '@/components/SetField';
 import { Button, EmptyText, ErrorView } from '@/components/ui';
@@ -14,6 +15,7 @@ import {
   getLoggingData,
   removeIntensifier,
   removeSet,
+  setVariationNote,
   swapVariation,
   type IntensifierRow,
   type NormalSetRow,
@@ -36,6 +38,9 @@ export default function LogScreen() {
   const [focusId, setFocusId] = useState<string | null>(null);
   const [failedWrites, setFailedWrites] = useState<(() => Promise<void>)[]>([]);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  /** The note window: closed, or open to read (Edit) or straight to editing (Write). */
+  const [noteWindow, setNoteWindow] = useState<'closed' | 'read' | 'write'>('closed');
   const opened = useRef(false);
 
   const { data, error, reload } = useFocusData(async () => {
@@ -141,12 +146,16 @@ export default function LogScreen() {
               <Text style={styles.label}>Variation</Text>
               <Text style={styles.title}>{data.selectedVariationName}</Text>
             </View>
-            <Button
-              label="Swap"
-              icon="swap-horizontal"
-              compact
-              onPress={() => router.push({ pathname: '/swap-variation', params: { workoutId, exerciseId } })}
-            />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Variation options"
+              accessibilityState={{ expanded: menuOpen }}
+              onPress={() => setMenuOpen((o) => !o)}
+              hitSlop={8}
+              style={({ pressed }) => [{ padding: 10 }, pressed && styles.pressed]}
+            >
+              <Ionicons name="ellipsis-vertical" size={22} color={colors.text} />
+            </Pressable>
           </View>
           <Text style={styles.small}>{lastTimeText}</Text>
           {data.alsoLogged.length > 0 ? (
@@ -158,7 +167,11 @@ export default function LogScreen() {
                   <Text
                     accessibilityRole="link"
                     style={{ color: colors.text, fontFamily: fonts.semibold, textDecorationLine: 'underline' }}
-                    onPress={() => run(() => swapVariation(db, workoutId, exerciseId, v.variationId))}
+                    onPress={() => {
+                      // The menu belongs to the variation on show.
+                      setMenuOpen(false);
+                      run(() => swapVariation(db, workoutId, exerciseId, v.variationId));
+                    }}
                   >
                     {v.name} ({plural(v.count, 'set')})
                   </Text>
@@ -167,6 +180,32 @@ export default function LogScreen() {
             </Text>
           ) : null}
         </View>
+
+        {menuOpen ? (
+          <View style={[styles.card, { padding: 8, gap: 4 }]}>
+            <Button
+              label="Swap"
+              icon="swap-horizontal"
+              variant="link"
+              style={{ alignItems: 'flex-start' }}
+              onPress={() => {
+                setMenuOpen(false);
+                router.push({ pathname: '/swap-variation', params: { workoutId, exerciseId } });
+              }}
+            />
+            <Button
+              label={data.selectedVariationNote === null ? 'Write' : 'Edit'}
+              icon={data.selectedVariationNote === null ? 'create-outline' : 'document-text-outline'}
+              variant="link"
+              style={{ alignItems: 'flex-start' }}
+              accessibilityLabel={data.selectedVariationNote === null ? 'Write a note' : 'Edit the note'}
+              onPress={() => {
+                setMenuOpen(false);
+                setNoteWindow(data.selectedVariationNote === null ? 'write' : 'read');
+              }}
+            />
+          </View>
+        ) : null}
 
         {data.sets.map((set) => (
           <SetBlock
@@ -211,6 +250,18 @@ export default function LogScreen() {
         />
       </KeyboardAwareScroll>
       <RestTimerBar dayId={data.dayId} />
+      {noteWindow !== 'closed' ? (
+        <NoteWindow
+          title={data.selectedVariationName}
+          note={data.selectedVariationNote}
+          startEditing={noteWindow === 'write'}
+          onSave={async (text) => {
+            await setVariationNote(db, data.selectedVariationId, text);
+            await reload();
+          }}
+          onClose={() => setNoteWindow('closed')}
+        />
+      ) : null}
     </View>
   );
 }

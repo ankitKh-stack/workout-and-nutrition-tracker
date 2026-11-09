@@ -29,10 +29,12 @@ import {
   reorderExercises,
   resumeWorkout,
   saveSetting,
+  setVariationNote,
   startWorkout,
   updateSetField,
   ValidationError,
 } from '../src/data/repository.ts';
+import { initializeDatabase } from '../src/data/schema.ts';
 import { openTestDb, tick } from './testDb.ts';
 
 const dayOrder = async (db: SQLiteDatabase) => (await listDays(db)).map((d) => d.name);
@@ -373,4 +375,62 @@ test('the rest length is remembered, and a bad stored value is ignored', async (
   assert.equal((await getSettings(db)).restSeconds, 150);
   await saveSetting(db, 'restSeconds', '9999');
   assert.equal((await getSettings(db)).restSeconds, null); // outside 30–300
+});
+
+test('a variation note is saved trimmed, shown while logging and on history, and kept across workouts', async () => {
+  const db = await openTestDb();
+  const { dayId, bench, workoutId, benchVar } = await specWorkout(db);
+  await setVariationNote(db, benchVar, '  Bench at notch 3\nseat 2  ');
+  assert.equal((await getLoggingData(db, workoutId, bench))!.selectedVariationNote, 'Bench at notch 3\nseat 2');
+  assert.equal((await getExerciseHistory(db, bench, null))!.note, 'Bench at notch 3\nseat 2');
+  await finishWorkout(db, workoutId);
+  const next = await startWorkout(db, dayId);
+  assert.equal((await getLoggingData(db, next, bench))!.selectedVariationNote, 'Bench at notch 3\nseat 2');
+});
+
+test('each variation has its own note', async () => {
+  const db = await openTestDb();
+  const { bench, workoutId, benchVar } = await specWorkout(db);
+  await setVariationNote(db, benchVar, 'notch 3');
+  await createVariationAndSwap(db, workoutId, bench, 'Incline DB');
+  assert.equal((await getLoggingData(db, workoutId, bench))!.selectedVariationNote, null);
+  assert.equal((await getExerciseHistory(db, bench, benchVar))!.note, 'notch 3');
+});
+
+test('a blank note removes it, and a note over 500 characters is refused', async () => {
+  const db = await openTestDb();
+  const { bench, benchVar } = await specWorkout(db);
+  await setVariationNote(db, benchVar, 'x');
+  await setVariationNote(db, benchVar, '  \n ');
+  assert.equal((await getExerciseHistory(db, bench, null))!.note, null);
+  await assert.rejects(setVariationNote(db, benchVar, 'a'.repeat(501)), ValidationError);
+  await setVariationNote(db, benchVar, 'a'.repeat(500)); // exactly 500 is fine
+  await assert.rejects(setVariationNote(db, 'no-such-variation', 'x'), ValidationError);
+  assert.equal((await getExerciseHistory(db, bench, null))!.note?.length, 500);
+});
+
+test('writing a note moves its day to the top', async () => {
+  const db = await openTestDb();
+  const { push, pull } = await threeDays(db);
+  const bench = await addExercise(db, push, 'Bench');
+  const benchVar = (await getExerciseHistory(db, bench, null))!.selectedVariationId;
+  await tick();
+  await renameDay(db, pull, 'Back');
+  await tick();
+  assert.equal((await dayOrder(db))[0], 'Back');
+  await setVariationNote(db, benchVar, 'notch 3');
+  assert.equal((await dayOrder(db))[0], 'Push');
+});
+
+test('a v3 database gains notes and keeps its data', async () => {
+  const db = await openTestDb();
+  const { bench, workoutId, benchVar } = await specWorkout(db);
+  await finishWorkout(db, workoutId);
+  await db.execAsync('ALTER TABLE variation DROP COLUMN note; PRAGMA user_version = 3;');
+  await initializeDatabase(db);
+  assert.equal((await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version'))!.user_version, 4);
+  assert.equal(await computeWorkoutVolume(db, workoutId), 1860);
+  assert.equal((await getExerciseHistory(db, bench, null))!.note, null); // existing variations start with no note
+  await setVariationNote(db, benchVar, 'notch 3');
+  assert.equal((await getExerciseHistory(db, bench, null))!.note, 'notch 3');
 });

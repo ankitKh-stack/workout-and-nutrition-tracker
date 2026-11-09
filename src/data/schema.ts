@@ -1,7 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 export const DATABASE_NAME = 'workout-tracker.db';
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 /**
  * Creates the tables on first launch and records the schema version so later
@@ -96,6 +96,10 @@ export async function initializeDatabase(db: SQLiteDatabase): Promise<void> {
     if (version.user_version < 3) {
       // When the user last dragged the day into place on Home (see listDays).
       await db.execAsync('ALTER TABLE day_basket ADD COLUMN moved_at TEXT;');
+    }
+    if (version.user_version < 4) {
+      // A note on each variation, e.g. "bench at notch 3" (NULL = no note).
+      await db.execAsync('ALTER TABLE variation ADD COLUMN note TEXT;');
     }
     await db.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
   });

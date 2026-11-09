@@ -563,6 +563,8 @@ export type LoggingData = {
   workoutStatus: 'in_progress' | 'completed';
   selectedVariationId: string;
   selectedVariationName: string;
+  /** The selected variation's note, or null when it has none. */
+  selectedVariationNote: string | null;
   lastTime: { date: string; sets: { reps: number | null; weight: number | null }[] } | null;
   alsoLogged: { variationId: string; name: string; count: number }[];
   sets: NormalSetRow[];
@@ -663,7 +665,10 @@ export async function getLoggingData(
   if (!exercise || !workout) return null;
 
   const selectedId = await selectedVariationFor(db, workoutId, exerciseId);
-  const selectedVar = await db.getFirstAsync<{ name: string }>('SELECT name FROM variation WHERE id = ?', selectedId);
+  const selectedVar = await db.getFirstAsync<{ name: string; note: string | null }>(
+    'SELECT name, note FROM variation WHERE id = ?',
+    selectedId,
+  );
 
   const sets = await setsWithIntensifiers(db, workoutId, selectedId);
 
@@ -732,6 +737,7 @@ export async function getLoggingData(
     workoutStatus: workout.status,
     selectedVariationId: selectedId,
     selectedVariationName: selectedVar?.name ?? exercise.name,
+    selectedVariationNote: selectedVar?.note ?? null,
     lastTime,
     alsoLogged,
     sets,
@@ -743,6 +749,8 @@ export type HistoryData = {
   exerciseName: string;
   selectedVariationId: string;
   variations: { id: string; name: string }[];
+  /** The selected variation's note, or null when it has none. */
+  note: string | null;
   /** Most recent first. */
   workouts: { workoutId: string; date: string; volume: number; sets: NormalSetRow[] }[];
 };
@@ -764,12 +772,14 @@ export async function getExerciseHistory(
     exerciseId,
   );
   if (!exercise) return null;
-  const variations = await db.getAllAsync<{ id: string; name: string }>(
-    'SELECT id, name FROM variation WHERE exercise_id = ? ORDER BY created_at ASC',
+  const rows = await db.getAllAsync<{ id: string; name: string; note: string | null }>(
+    'SELECT id, name, note FROM variation WHERE exercise_id = ? ORDER BY created_at ASC',
     exerciseId,
   );
+  const variations = rows.map((v) => ({ id: v.id, name: v.name }));
   const selectedId =
     variationId && variations.some((v) => v.id === variationId) ? variationId : exercise.default_variation_id;
+  const note = rows.find((v) => v.id === selectedId)?.note ?? null;
 
   const recent = await db.getAllAsync<{ id: string; date: string }>(
     `SELECT w.id, w.date FROM workout w
@@ -797,7 +807,7 @@ export async function getExerciseHistory(
     );
     workouts.push({ workoutId: w.id, date: w.date, volume, sets });
   }
-  return { exerciseName: exercise.name, selectedVariationId: selectedId, variations, workouts };
+  return { exerciseName: exercise.name, selectedVariationId: selectedId, variations, note, workouts };
 }
 
 /** Appends an empty normal set for a variation in a workout. */
@@ -1027,6 +1037,27 @@ export async function createVariationAndSwap(
     await swapVariation(db, workoutId, exerciseId, id);
   });
   return id;
+}
+
+export const NOTE_MAX_LENGTH = 500;
+
+/**
+ * Saves a variation's note, trimmed; blank text removes it. The exercise is
+ * stamped too, so the day moves up on Home like any other change inside it.
+ * The workout is not touched, so a note never counts as workout activity.
+ */
+export async function setVariationNote(db: SQLiteDatabase, variationId: string, note: string): Promise<void> {
+  const text = note.trim();
+  if (text.length > NOTE_MAX_LENGTH) throw new ValidationError(`A note can be at most ${NOTE_MAX_LENGTH} characters.`);
+  const t = now();
+  await db.withTransactionAsync(async () => {
+    const result = await db.runAsync('UPDATE variation SET note = ?, updated_at = ? WHERE id = ?', text || null, t, variationId);
+    if (result.changes === 0) throw new ValidationError('This variation no longer exists.');
+    await db.runAsync(
+      'UPDATE exercise SET updated_at = ? WHERE id = (SELECT exercise_id FROM variation WHERE id = ?)',
+      t, variationId,
+    );
+  });
 }
 
 // ---------------------------------------------------------------------------
