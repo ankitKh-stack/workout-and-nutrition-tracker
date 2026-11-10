@@ -366,9 +366,10 @@ export async function startWorkout(db: SQLiteDatabase, dayId: string): Promise<s
   return id;
 }
 
+/** Sets with something typed in; empty rows (e.g. the one opening an exercise adds) don't count, as in auto-end. */
 export async function countWorkoutSets(db: SQLiteDatabase, workoutId: string): Promise<number> {
   const row = await db.getFirstAsync<{ n: number }>(
-    'SELECT COUNT(*) AS n FROM workout_set WHERE workout_id = ?',
+    'SELECT COUNT(*) AS n FROM workout_set WHERE workout_id = ? AND (reps IS NOT NULL OR weight IS NOT NULL)',
     workoutId,
   );
   return row?.n ?? 0;
