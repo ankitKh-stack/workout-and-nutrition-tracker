@@ -2,18 +2,21 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Keyboard, Pressable, Text, View } from 'react-native';
 
 import { KeyboardAwareScroll } from '@/components/KeyboardAwareScroll';
+import { NoteWindow } from '@/components/NoteWindow';
 import { RestTimerBar } from '@/components/RestTimerBar';
 import { SetField } from '@/components/SetField';
 import { Button, EmptyText, ErrorView } from '@/components/ui';
 import {
   addSet,
   countIntensifiers,
+  fillSetFromLast,
   getLoggingData,
   removeIntensifier,
   removeSet,
+  setVariationNote,
   swapVariation,
   type IntensifierRow,
   type NormalSetRow,
@@ -23,7 +26,7 @@ import { confirmAsync } from '@/lib/dialogs';
 import { formatDateShort, formatNumber, formatWeight, plural, toDisplayWeight } from '@/lib/format';
 import { useFocusData } from '@/lib/useFocusData';
 import { useRestTimer } from '@/lib/restTimer';
-import { drainWrites, requestFocus, takeFocusRequest } from '@/lib/writeQueue';
+import { drainWrites, enqueueWrite, requestFocus, takeFocusRequest } from '@/lib/writeQueue';
 import { fonts } from '@/theme/palette';
 import { useSettings, useTheme } from '@/theme/settings';
 
@@ -36,6 +39,9 @@ export default function LogScreen() {
   const [focusId, setFocusId] = useState<string | null>(null);
   const [failedWrites, setFailedWrites] = useState<(() => Promise<void>)[]>([]);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  /** The note window: closed, or open to read (Edit) or straight to editing (Write). */
+  const [noteWindow, setNoteWindow] = useState<'closed' | 'read' | 'write'>('closed');
   const opened = useRef(false);
 
   const { data, error, reload } = useFocusData(async () => {
@@ -118,6 +124,29 @@ export default function LogScreen() {
     await run(() => removeSet(db, set.setId));
   }
 
+  /**
+   * Fill from last time (SPEC.md 3.5): only for a set with nothing stored and a
+   * set with the same number last time. Filling means the set was done, so the
+   * rest starts straight away when the set is complete and nothing follows it.
+   */
+  function fillFor(set: NormalSetRow) {
+    const last = data?.lastTime?.sets[set.number - 1];
+    if (!data || !last || (last.reps === null && last.weight === null)) return undefined;
+    if (set.reps !== null || set.weight !== null) return undefined;
+    const owner = { dayId: data.dayId, workoutId };
+    return () => {
+      Keyboard.dismiss();
+      run(async () => {
+        // Queued behind any field saves, so typed values land first and are never overwritten.
+        const row = await enqueueWrite(() => fillSetFromLast(db, set.setId, last.reps, last.weight));
+        // Only a fill that changed the set starts the rest, so a second tap does nothing.
+        if (row.changed && newlyDone(false, 'normal', row.reps, row.weight) && offersRest(0, 1 + set.intensifiers.length)) {
+          rest.startNow(owner);
+        }
+      });
+    };
+  }
+
   const lastTimeText = data.lastTime
     ? `Last done ${formatDateShort(data.lastTime.date)} · ${plural(data.lastTime.sets.length, 'set')}`
     : 'No history for this variation yet';
@@ -141,12 +170,16 @@ export default function LogScreen() {
               <Text style={styles.label}>Variation</Text>
               <Text style={styles.title}>{data.selectedVariationName}</Text>
             </View>
-            <Button
-              label="Swap"
-              icon="swap-horizontal"
-              compact
-              onPress={() => router.push({ pathname: '/swap-variation', params: { workoutId, exerciseId } })}
-            />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Variation options"
+              accessibilityState={{ expanded: menuOpen }}
+              onPress={() => setMenuOpen((o) => !o)}
+              hitSlop={8}
+              style={({ pressed }) => [{ padding: 10 }, pressed && styles.pressed]}
+            >
+              <Ionicons name="ellipsis-vertical" size={22} color={colors.text} />
+            </Pressable>
           </View>
           <Text style={styles.small}>{lastTimeText}</Text>
           {data.alsoLogged.length > 0 ? (
@@ -158,7 +191,11 @@ export default function LogScreen() {
                   <Text
                     accessibilityRole="link"
                     style={{ color: colors.text, fontFamily: fonts.semibold, textDecorationLine: 'underline' }}
-                    onPress={() => run(() => swapVariation(db, workoutId, exerciseId, v.variationId))}
+                    onPress={() => {
+                      // The menu belongs to the variation on show.
+                      setMenuOpen(false);
+                      run(() => swapVariation(db, workoutId, exerciseId, v.variationId));
+                    }}
                   >
                     {v.name} ({plural(v.count, 'set')})
                   </Text>
@@ -167,6 +204,32 @@ export default function LogScreen() {
             </Text>
           ) : null}
         </View>
+
+        {menuOpen ? (
+          <View style={[styles.card, { padding: 8, gap: 4 }]}>
+            <Button
+              label="Swap"
+              icon="swap-horizontal"
+              variant="link"
+              style={{ alignItems: 'flex-start' }}
+              onPress={() => {
+                setMenuOpen(false);
+                router.push({ pathname: '/swap-variation', params: { workoutId, exerciseId } });
+              }}
+            />
+            <Button
+              label={data.selectedVariationNote === null ? 'Write' : 'Edit'}
+              icon={data.selectedVariationNote === null ? 'create-outline' : 'document-text-outline'}
+              variant="link"
+              style={{ alignItems: 'flex-start' }}
+              accessibilityLabel={data.selectedVariationNote === null ? 'Write a note' : 'Edit the note'}
+              onPress={() => {
+                setMenuOpen(false);
+                setNoteWindow(data.selectedVariationNote === null ? 'write' : 'read');
+              }}
+            />
+          </View>
+        ) : null}
 
         {data.sets.map((set) => (
           <SetBlock
@@ -182,6 +245,7 @@ export default function LogScreen() {
             onRemove={() => onRemoveSet(set)}
             onRemoveIntensifier={(i) => run(() => removeIntensifier(db, i.intensifierId))}
             onRest={(n) => rest.offer({ dayId: data.dayId, workoutId }, n)}
+            onFill={fillFor(set)}
           />
         ))}
 
@@ -211,6 +275,18 @@ export default function LogScreen() {
         />
       </KeyboardAwareScroll>
       <RestTimerBar dayId={data.dayId} />
+      {noteWindow !== 'closed' ? (
+        <NoteWindow
+          title={data.selectedVariationName}
+          note={data.selectedVariationNote}
+          startEditing={noteWindow === 'write'}
+          onSave={async (text) => {
+            await setVariationNote(db, data.selectedVariationId, text);
+            await reload();
+          }}
+          onClose={() => setNoteWindow('closed')}
+        />
+      ) : null}
     </View>
   );
 }
@@ -241,6 +317,7 @@ function FieldPair({
   weight,
   autoFocus,
   onWeightChange,
+  onEdit,
   onSaveError,
   kind = 'normal',
   onDone,
@@ -250,6 +327,8 @@ function FieldPair({
   weight: number | null;
   autoFocus?: boolean;
   onWeightChange?: (value: number | null) => void;
+  /** Called on any keystroke in either field. */
+  onEdit?: () => void;
   onSaveError: (retry: () => Promise<void>) => void;
   kind?: RowKind;
   /** Called once, when this row is done for the first time. */
@@ -267,6 +346,7 @@ function FieldPair({
           field="reps"
           initial={reps}
           autoFocus={autoFocus}
+          onEdit={onEdit}
           onBlurValue={left('reps')}
           onSaveError={onSaveError}
         />
@@ -278,6 +358,7 @@ function FieldPair({
           field="weight"
           initial={weight}
           onValueChange={onWeightChange}
+          onEdit={onEdit}
           onBlurValue={left('weight')}
           onSaveError={onSaveError}
         />
@@ -324,26 +405,39 @@ type SetBlockProps = {
   onRemoveIntensifier: (i: IntensifierRow) => void;
   /** Offer a rest after this set number. */
   onRest: (setNumber: number) => void;
+  /** Fills the set from last time; only given when the set is empty and last time had this set. */
+  onFill?: () => void;
 };
 
 /** A normal set: last time's numbers beside its name, its fields, then its intensifier rows. */
-function SetBlock({ set, last, focusId, onSaveError, onAddIntensifier, onRemove, onRemoveIntensifier, onRest }: SetBlockProps) {
+function SetBlock({ set, last, focusId, onSaveError, onAddIntensifier, onRemove, onRemoveIntensifier, onRest, onFill }: SetBlockProps) {
   const { styles, colors } = useTheme();
   const { unit } = useSettings();
   // Tracked here, in the display unit, so partial-reps rows show the parent weight as it is typed.
   const [parentWeight, setParentWeight] = useState(set.weight === null ? null : toDisplayWeight(set.weight, unit));
+  // Typing in the set hides "Use": the screen doesn't reload on each save, so stored values can't tell.
+  const [typed, setTyped] = useState(false);
   // The rest comes after the set's last row: the set itself, or its last drop, partial or superset row.
   const rowCount = 1 + set.intensifiers.length;
   const restAfter = (rowIndex: number) => (offersRest(rowIndex, rowCount) ? () => onRest(set.number) : undefined);
 
   return (
     <View style={styles.card}>
-      <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
         <Text style={[styles.bodyStrong, { flex: 1, fontSize: 16 }]}>Set {set.number}</Text>
         {last ? (
           <Text style={[styles.small, styles.number]}>
             Last {last.reps ?? '—'} × {formatWeight(last.weight, unit)} {unit}
           </Text>
+        ) : null}
+        {last && onFill && !typed ? (
+          <Button
+            label="Use"
+            variant="link"
+            compact
+            accessibilityLabel={`Use last time's ${last.reps ?? '—'} × ${formatWeight(last.weight, unit)} ${unit} for Set ${set.number}`}
+            onPress={onFill}
+          />
         ) : null}
       </View>
       <FieldPair
@@ -352,6 +446,7 @@ function SetBlock({ set, last, focusId, onSaveError, onAddIntensifier, onRemove,
         weight={set.weight}
         autoFocus={focusId === set.setId}
         onWeightChange={setParentWeight}
+        onEdit={() => setTyped(true)}
         onSaveError={onSaveError}
         onDone={restAfter(0)}
       />

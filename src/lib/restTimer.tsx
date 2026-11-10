@@ -18,6 +18,8 @@ type RestTimerValue = {
   alertsAllowed: boolean | null;
   offer: (owner: RestOwner, setNumber: number) => void;
   start: () => void;
+  /** Starts the rest right away, without the prompt (Fill from last time). */
+  startNow: (owner: RestOwner) => void;
   dismiss: () => void;
   adjust: (deltaSeconds: 15 | -15) => void;
   skip: () => void;
@@ -108,8 +110,13 @@ export function RestTimerProvider({ children }: { children: ReactNode }) {
     return () => clearTimeout(t);
   }, [over]);
 
-  const value = useMemo<RestTimerValue>(
-    () => ({
+  const value = useMemo<RestTimerValue>(() => {
+    const startNow = (owner: RestOwner) => {
+      setPrompt(null);
+      setOver(null);
+      setCountdown({ ...startCountdown(Date.now(), restSeconds), owner });
+    };
+    return {
       prompt,
       countdown,
       over,
@@ -119,11 +126,9 @@ export function RestTimerProvider({ children }: { children: ReactNode }) {
         setPrompt({ setNumber, owner });
       },
       start: () => {
-        if (!prompt) return;
-        setPrompt(null);
-        setOver(null);
-        setCountdown({ ...startCountdown(Date.now(), restSeconds), owner: prompt.owner });
+        if (prompt) startNow(prompt.owner);
       },
+      startNow,
       dismiss: () => setPrompt(null),
       adjust: (delta) => {
         // From the latest countdown, not this render's copy, so quick taps all count.
@@ -138,9 +143,8 @@ export function RestTimerProvider({ children }: { children: ReactNode }) {
       },
       barHeight,
       reportBarHeight: setBarHeight,
-    }),
-    [prompt, countdown, over, alertsAllowed, restSeconds, setCountdown, barHeight],
-  );
+    };
+  }, [prompt, countdown, over, alertsAllowed, restSeconds, setCountdown, barHeight]);
 
   return <RestTimerContext.Provider value={value}>{children}</RestTimerContext.Provider>;
 }

@@ -83,7 +83,7 @@ These terms are used throughout the spec. They are defined for a reader who has 
 
 **Error state:** If reading from storage fails, show "Could not load your days." with a "Try again" button that re-runs the read. (Reason: storage failure is rare but should never show a blank screen that looks like data loss.)
 
-**Technical:** On focus, query all `DayBasket` records ordered by: in-progress workout first, then `lastChangedAt` descending, where `lastChangedAt` is the latest of the day's `updatedAt` and `movedAt`, and the `updatedAt` of its exercises, its workouts and the sets in those workouts. Dropping a dragged day writes `movedAt` on every day: now for the top day, then one millisecond earlier for each day below it, so the dragged order ranks above every earlier change. Deleting an exercise stamps the day, and removing a set or intensifier stamps its workout, so deletions also count as changes. For each, count its `Exercise` records and find the latest `Workout` with `status = completed` (by `startedAt`) and whether one with `status = in_progress` exists.
+**Technical:** On focus, query all `DayBasket` records ordered by: in-progress workout first, then `lastChangedAt` descending, where `lastChangedAt` is the latest of the day's `updatedAt` and `movedAt`, and the `updatedAt` of its exercises, its workouts and the sets in those workouts. Dropping a dragged day writes `movedAt` on every day: now for the top day, then one millisecond earlier for each day below it, so the dragged order ranks above every earlier change. Deleting an exercise stamps the day, and removing a set or intensifier stamps its workout, so deletions also count as changes. Saving a variation's note stamps its exercise, so it counts as a change too. For each, count its `Exercise` records and find the latest `Workout` with `status = completed` (by `startedAt`) and whether one with `status = in_progress` exists.
 
 ---
 
@@ -200,15 +200,16 @@ These terms are used throughout the spec. They are defined for a reader who has 
 
 ### 3.5 Exercise logging
 
-**Summary:** The screen where the user records what they lift. It shows the current variation of the exercise, what they did last time on that variation, and a list of set rows with reps and weight fields. Each set can have intensifiers attached (drop set, partial reps, superset), which appear as indented rows under it. A "Swap variation" button lets the user change variation without losing anything already logged.
+**Summary:** The screen where the user records what they lift. It shows the current variation of the exercise, what they did last time on that variation, and a list of set rows with reps and weight fields. Each set can have intensifiers attached (drop set, partial reps, superset), which appear as indented rows under it. A ⋮ menu on the variation lets the user change variation without losing anything already logged, and write a note on the variation.
 
 **What the user sees, top to bottom:**
 1. Header: the exercise name.
-2. Variation line: "Variation: Seated dumbbell curl" with a "Swap" button next to it.
+2. Variation line: "Variation: Seated dumbbell curl" with a ⋮ button next to it. Tapping ⋮ opens a small menu card under the variation with "Swap" and either "Write" (the variation has no note) or "Edit" (it has one); tapping ⋮ again or picking an item closes it.
 3. "Last time" line for the selected variation, read-only: "Last time (21 Oct): 10 × 20 kg, 10 × 20 kg, 8 × 20 kg". If this variation has no completed history: "No history for this variation yet". (Reason: the user's notes require the app to remember progression for all variations; this line is how that memory is shown.)
 4. "Also logged this workout" line, shown only if other variations of this exercise already have sets in the current workout: "Also logged this workout: Standing cable curl (2 sets)". Tapping it switches the selected variation back to that one (same effect as choosing it in the swap screen).
 5. The set list for the selected variation in this workout. Each normal set is a row:
    - Label "Set 1", "Set 2", … (numbered by order among normal sets of this variation in this workout).
+   - "Last 8 × 60 kg": the set with the same number on this variation in the last completed workout, when there is one. When this set has nothing stored yet, a "Use" button follows it.
    - "Reps" field (number).
    - "kg" field (number).
    - "+ Intensifier" button.
@@ -223,10 +224,11 @@ These terms are used throughout the spec. They are defined for a reader who has 
 **Fields and controls:**
 - Reps fields: numeric keypad, whole numbers 0–999.
 - Weight (kg) fields: decimal keypad, numbers 0–9999 with at most 2 decimal places.
-- "Swap" button, "+ Intensifier" button per normal set, "Remove" button per row, "+ Add set" button, "Also logged this workout" link.
+- ⋮ menu (Swap, Write / Edit), "+ Intensifier" button per normal set, "Remove" button per row, "+ Add set" button, "Also logged this workout" link.
 - Back navigation returns to Day detail.
 
 **Actions:**
+- "Use" (fill from last time) → a typed value that hasn't saved yet is saved first. Then last time's reps and weight are copied into the fields that are still empty; a stored value is never overwritten. If last time had only one of the two, only that one is filled. The keyboard closes and "Use" disappears. Tapping Use means the set was done, so when the set ends up with both values and has no intensifier rows after it, the rest countdown starts at once, without the "Start rest?" prompt. Normal sets only: intensifier rows never get "Use".
 - "+ Add set" → appends a new empty normal set row for the selected variation. The new row's Reps field gets focus.
 - Focusing a field while the keyboard is open, or opening the keyboard → the screen scrolls so the field sits just above the keyboard, and extra space equal to the keyboard's height is added at the end of the list so every row can be scrolled into view. (Reason: on Android the app is drawn edge to edge, so the keyboard otherwise covers the lower fields.)
 - Typing in a field → the value is saved to storage within 500 ms of the last keystroke, and again when the field loses focus or the user leaves the screen. (Reason: the prototype must survive an app restart at any moment, including mid-workout.)
@@ -234,6 +236,13 @@ These terms are used throughout the spec. They are defined for a reader who has 
 - "Remove" on a normal set → removes the set and every intensifier row attached to it, after a confirmation "Remove Set 2 and its 1 intensifier?" when it has intensifiers; with no intensifiers it is removed immediately. Remaining sets renumber.
 - "Remove" on an intensifier row → removes that row only, immediately.
 - "Swap" → opens Variation swap (3.7).
+- "Write" / "Edit" → opens the note window for the selected variation:
+  - **What a note is for:** setup details that reps and weight can't hold, such as "bench at notch 3, seat 2". There is one note per variation, and it carries over from workout to workout until edited. Swapping variation shows the other variation's own note.
+  - **The window:** a small card over the dimmed screen, titled with the variation's name. "Write" opens it ready to type, with the keyboard up. "Edit" opens it showing the note, with a pen button that turns the text into an editable box.
+  - **Editing:** plain text with line breaks, up to 500 characters. A "n/500" counter appears from 450 characters, and typing stops at 500. The box has "Cancel" and "Save" buttons, and the keyboard never covers the box or the buttons.
+  - **Saving:** only "Save" writes. The text is trimmed; saving it empty removes the note, closes the window, and the menu shows "Write" again. If saving fails, the window stays open with "Could not save the note. Try again."
+  - **Leaving with unsaved changes:** tapping outside the card, Android Back or Cancel first asks "Discard changes? Your changes to this note will be lost." With no unsaved changes, tapping outside or Back simply closes it.
+  - **Not workout activity:** a note is not workout activity for auto-end (3.3), but it does move the day to the top of Home like any other change inside it (3.1).
 - Tap "Also logged this workout" → switches to that variation; its sets from this workout reappear.
 
 **Empty state:** When the selected variation has no sets in this workout, the set list shows one empty normal set row already created (Set 1, empty fields). (Reason: the user's notes say a newly typed exercise is "created with Sets and Reps fields", so fields should be visible immediately.) This auto-created row is only created when the screen is opened, not on every swap back; after a swap the settled rule applies (see 3.7).
@@ -410,13 +419,14 @@ These terms are used throughout the spec. They are defined for a reader who has 
 - Weights are stored in kg. Display value = kg ÷ 0.45359237 for lb, rounded to 2 decimals; a value typed in lb is stored as value × 0.45359237 at full precision, so it shows back exactly as typed. Volumes are computed in kg and converted for display, so percentage changes and shades do not depend on the unit.
 - Field labels, placeholders, "Last time", partial-reps "@ … lb" text and calendar volumes all use the chosen unit.
 
-### 3.11 Exercise history (read-only)
+### 3.11 Exercise history
 
-**Summary:** Opened by tapping an exercise when no workout is in progress. It shows what was lifted on that exercise in recent workouts, so the user can check last week's numbers without starting a workout. Nothing on this screen changes data.
+**Summary:** Opened by tapping an exercise when no workout is in progress. It shows what was lifted on that exercise in recent workouts, so the user can check last week's numbers without starting a workout. The only thing that can be changed here is the variation's note.
 
 **What the user sees:**
 - Header: the exercise name.
 - When the exercise has more than one variation: a row of pill chips, one per variation, with the current variation selected. Tapping a chip shows that variation's history; it does not change which variation the next workout opens on.
+- When the selected variation has a note: a "Note" card showing it (up to 3 lines). Tapping it opens the same note window as on the logging screen (3.5), where the note can be read and edited. No note means no card.
 - Up to the 5 most recent completed workouts that logged sets on the selected variation, newest first. Each is a card with the date ("23 Oct 2026"), the volume of that variation in that workout ("Volume 920 kg", superset partner rows excluded because they belong to the other exercise), and each set ("Set 1   10 × 60 kg") followed by its intensifier rows, indented with the intensifier's colour ("Drop  8 × 40 kg", "Partials  4 @ 60 kg", "Superset: Triceps pushdown  12 × 25 kg").
 - A closing hint: "To log sets, tap Start workout on the day screen."
 
@@ -424,7 +434,7 @@ These terms are used throughout the spec. They are defined for a reader who has 
 
 **Error state:** "Could not load this exercise." with "Try again".
 
-**Technical:** Reads only. Uses the same set-and-intensifier query as the logging screen (5.5, 5.6) for each listed workout; weights are shown in the chosen unit (3.10).
+**Technical:** Reads only, except saving the note. Uses the same set-and-intensifier query as the logging screen (5.5, 5.6) for each listed workout; weights are shown in the chosen unit (3.10).
 
 ---
 
@@ -568,6 +578,7 @@ Relation: an Exercise belongs to exactly one DayBasket and has one or more Varia
 
 - `exerciseId` — the Exercise it belongs to.
 - `name` — text, 1–60 characters, unique within its exercise ignoring case and outer spaces.
+- `note` — text up to 500 characters, stored trimmed, or empty for no note (schema version 4). Setup details for this variation, shown and edited from the logging screen's ⋮ menu (3.5) and on exercise history (3.11).
 
 Relation: a Variation belongs to exactly one Exercise, and every Set records the Variation it was performed on, which is how progression is kept for each variation separately.
 
@@ -708,11 +719,10 @@ The prototype must not include the following. Each is excluded for the reason gi
 | Polished visual design beyond the light/dark palettes (custom fonts, logo, animations) | The prototype proves behaviour first; layout follows the reference screenshots loosely. |
 | A built-in exercise library or preset exercise lists | The user creates exercises by typing a name; presets were not requested. |
 | Intensifiers other than drop set, partial reps and superset, or user-defined intensifier types | The settled decision is exactly three intensifiers. |
-| Rest timers, workout timers, reminders, notifications | Not requested. |
+| Workout timers, reminders, and notifications other than the rest timer's alert (3.5) | Not requested. |
 | Charts, graphs, statistics screens or best-lift tracking beyond the calendar and the "Last time" line | Not requested; the calendar is the requested progress view. |
 | Workout templates, planned sets or rep targets | Not requested. |
 | Data export or import, sharing, social features | Not requested. |
-| Reordering days or exercises by drag and drop | Not requested; lists use creation order. |
 | A web version | The fixed stack targets Android and iPhone. |
 | Writing the app code in this document | This document is the specification only; Claude Code builds the code from it. |
 
