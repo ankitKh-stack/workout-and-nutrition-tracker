@@ -130,6 +130,7 @@ export function ReorderableList<T>({ items, keyOf, renderItem, onReorder, onDrag
         onPanResponderTerminate: end,
       }),
     // Created once: follow and end read everything through refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
 

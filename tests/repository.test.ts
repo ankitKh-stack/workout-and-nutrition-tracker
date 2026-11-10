@@ -468,3 +468,16 @@ test('empty set rows do not count as logged sets when finishing', async () => {
   await updateSetField(db, empty, 'reps', 8);
   assert.equal(await countWorkoutSets(db, workout), 1);
 });
+
+test('empty set rows are not counted as logged on the day screen or in the data summary', async () => {
+  const db = await openTestDb();
+  const day = await createDay(db, 'Push');
+  const bench = await addExercise(db, day, 'Bench');
+  const workout = await startWorkout(db, day);
+  const benchVar = (await getLoggingData(db, workout, bench))!.selectedVariationId;
+  await addSet(db, workout, benchVar); // left empty
+  await logSet(db, workout, benchVar, 8, 60);
+  assert.equal((await getDayDetail(db, day))!.exercises[0].loggedSetCount, 1);
+  await finishWorkout(db, workout);
+  assert.equal((await getDataSummary(db)).sets, 1);
+});

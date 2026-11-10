@@ -54,6 +54,13 @@ export default function IntensifierScreen() {
     }
   }
 
+  /** A row tap: a second tap before the screen closes adds nothing. */
+  async function pick(type: IntensifierType, partnerExerciseId: string | null = null) {
+    if (busy.current) return;
+    busy.current = true;
+    if (!(await add(type, partnerExerciseId))) busy.current = false;
+  }
+
   const canAddNew = newName.trim().length > 0 && !addingNew;
 
   async function addNew() {
@@ -85,12 +92,12 @@ export default function IntensifierScreen() {
       {saveError && step === 'choose' ? <InlineError>{saveError}</InlineError> : null}
       {step === 'choose' ? (
         <>
-          <ListRow title="Drop set" subtitle="Lower the weight and keep going" style={mark(colors.kinds.drop)} onPress={() => add('drop')} />
+          <ListRow title="Drop set" subtitle="Lower the weight and keep going" style={mark(colors.kinds.drop)} onPress={() => pick('drop')} />
           <ListRow
             title="Partial reps"
             subtitle="Extra short-range reps at the same weight"
             style={mark(colors.kinds.partial)}
-            onPress={() => add('partial')}
+            onPress={() => pick('partial')}
           />
           <ListRow
             title="Superset"
@@ -110,7 +117,7 @@ export default function IntensifierScreen() {
               key={p.exerciseId}
               title={p.name}
               subtitle={p.variationName}
-              onPress={() => add('superset', p.exerciseId)}
+              onPress={() => pick('superset', p.exerciseId)}
             />
           ))}
           {/* A new exercise is added to the day and paired with this set in one go. */}

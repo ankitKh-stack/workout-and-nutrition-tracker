@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { ReorderableList } from '@/components/ReorderableList';
@@ -43,6 +43,8 @@ export default function DayDetailScreen() {
   const [dragging, setDragging] = useState(false);
   const [banner, setBanner] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  // Set at once (state only updates on the next render), so a fast double tap starts one workout.
+  const starting = useRef(false);
 
   const { cancelFor } = useRestTimer();
   // No workout in progress (finished, auto-ended or discarded), or the day is gone: no rest to time.
@@ -71,6 +73,8 @@ export default function DayDetailScreen() {
     router.push({ pathname: '/workouts/log', params: { workoutId, exerciseId } });
 
   async function onStart() {
+    if (starting.current) return;
+    starting.current = true;
     setActionError(null);
     try {
       await startWorkout(db, dayId);
@@ -78,6 +82,7 @@ export default function DayDetailScreen() {
     } catch {
       setActionError('Could not start the workout. Try again.');
     }
+    starting.current = false;
   }
 
   function onExercisePress(exerciseId: string) {
