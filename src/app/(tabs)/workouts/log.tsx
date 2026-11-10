@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Keyboard, Pressable, Text, View } from 'react-native';
 
 import { KeyboardAwareScroll } from '@/components/KeyboardAwareScroll';
 import { NoteWindow } from '@/components/NoteWindow';
@@ -12,6 +12,7 @@ import { Button, EmptyText, ErrorView } from '@/components/ui';
 import {
   addSet,
   countIntensifiers,
+  fillSetFromLast,
   getLoggingData,
   removeIntensifier,
   removeSet,
@@ -25,7 +26,7 @@ import { confirmAsync } from '@/lib/dialogs';
 import { formatDateShort, formatNumber, formatWeight, plural, toDisplayWeight } from '@/lib/format';
 import { useFocusData } from '@/lib/useFocusData';
 import { useRestTimer } from '@/lib/restTimer';
-import { drainWrites, requestFocus, takeFocusRequest } from '@/lib/writeQueue';
+import { drainWrites, enqueueWrite, requestFocus, takeFocusRequest } from '@/lib/writeQueue';
 import { fonts } from '@/theme/palette';
 import { useSettings, useTheme } from '@/theme/settings';
 
@@ -121,6 +122,29 @@ export default function LogScreen() {
       if (!ok) return;
     }
     await run(() => removeSet(db, set.setId));
+  }
+
+  /**
+   * Fill from last time (SPEC.md 3.5): only for a set with nothing stored and a
+   * set with the same number last time. Filling means the set was done, so the
+   * rest starts straight away when the set is complete and nothing follows it.
+   */
+  function fillFor(set: NormalSetRow) {
+    const last = data?.lastTime?.sets[set.number - 1];
+    if (!data || !last || (last.reps === null && last.weight === null)) return undefined;
+    if (set.reps !== null || set.weight !== null) return undefined;
+    const owner = { dayId: data.dayId, workoutId };
+    return () => {
+      Keyboard.dismiss();
+      run(async () => {
+        // Queued behind any field saves, so typed values land first and are never overwritten.
+        const row = await enqueueWrite(() => fillSetFromLast(db, set.setId, last.reps, last.weight));
+        // Only a fill that changed the set starts the rest, so a second tap does nothing.
+        if (row.changed && newlyDone(false, 'normal', row.reps, row.weight) && offersRest(0, 1 + set.intensifiers.length)) {
+          rest.startNow(owner);
+        }
+      });
+    };
   }
 
   const lastTimeText = data.lastTime
@@ -221,6 +245,7 @@ export default function LogScreen() {
             onRemove={() => onRemoveSet(set)}
             onRemoveIntensifier={(i) => run(() => removeIntensifier(db, i.intensifierId))}
             onRest={(n) => rest.offer({ dayId: data.dayId, workoutId }, n)}
+            onFill={fillFor(set)}
           />
         ))}
 
@@ -292,6 +317,7 @@ function FieldPair({
   weight,
   autoFocus,
   onWeightChange,
+  onEdit,
   onSaveError,
   kind = 'normal',
   onDone,
@@ -301,6 +327,8 @@ function FieldPair({
   weight: number | null;
   autoFocus?: boolean;
   onWeightChange?: (value: number | null) => void;
+  /** Called on any keystroke in either field. */
+  onEdit?: () => void;
   onSaveError: (retry: () => Promise<void>) => void;
   kind?: RowKind;
   /** Called once, when this row is done for the first time. */
@@ -318,6 +346,7 @@ function FieldPair({
           field="reps"
           initial={reps}
           autoFocus={autoFocus}
+          onEdit={onEdit}
           onBlurValue={left('reps')}
           onSaveError={onSaveError}
         />
@@ -329,6 +358,7 @@ function FieldPair({
           field="weight"
           initial={weight}
           onValueChange={onWeightChange}
+          onEdit={onEdit}
           onBlurValue={left('weight')}
           onSaveError={onSaveError}
         />
@@ -375,26 +405,39 @@ type SetBlockProps = {
   onRemoveIntensifier: (i: IntensifierRow) => void;
   /** Offer a rest after this set number. */
   onRest: (setNumber: number) => void;
+  /** Fills the set from last time; only given when the set is empty and last time had this set. */
+  onFill?: () => void;
 };
 
 /** A normal set: last time's numbers beside its name, its fields, then its intensifier rows. */
-function SetBlock({ set, last, focusId, onSaveError, onAddIntensifier, onRemove, onRemoveIntensifier, onRest }: SetBlockProps) {
+function SetBlock({ set, last, focusId, onSaveError, onAddIntensifier, onRemove, onRemoveIntensifier, onRest, onFill }: SetBlockProps) {
   const { styles, colors } = useTheme();
   const { unit } = useSettings();
   // Tracked here, in the display unit, so partial-reps rows show the parent weight as it is typed.
   const [parentWeight, setParentWeight] = useState(set.weight === null ? null : toDisplayWeight(set.weight, unit));
+  // Typing in the set hides "Use": the screen doesn't reload on each save, so stored values can't tell.
+  const [typed, setTyped] = useState(false);
   // The rest comes after the set's last row: the set itself, or its last drop, partial or superset row.
   const rowCount = 1 + set.intensifiers.length;
   const restAfter = (rowIndex: number) => (offersRest(rowIndex, rowCount) ? () => onRest(set.number) : undefined);
 
   return (
     <View style={styles.card}>
-      <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
         <Text style={[styles.bodyStrong, { flex: 1, fontSize: 16 }]}>Set {set.number}</Text>
         {last ? (
           <Text style={[styles.small, styles.number]}>
             Last {last.reps ?? '—'} × {formatWeight(last.weight, unit)} {unit}
           </Text>
+        ) : null}
+        {last && onFill && !typed ? (
+          <Button
+            label="Use"
+            variant="link"
+            compact
+            accessibilityLabel={`Use last time's ${last.reps ?? '—'} × ${formatWeight(last.weight, unit)} ${unit} for Set ${set.number}`}
+            onPress={onFill}
+          />
         ) : null}
       </View>
       <FieldPair
@@ -403,6 +446,7 @@ function SetBlock({ set, last, focusId, onSaveError, onAddIntensifier, onRemove,
         weight={set.weight}
         autoFocus={focusId === set.setId}
         onWeightChange={setParentWeight}
+        onEdit={() => setTyped(true)}
         onSaveError={onSaveError}
         onDone={restAfter(0)}
       />

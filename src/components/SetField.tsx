@@ -18,6 +18,8 @@ type Props = {
   autoFocus?: boolean;
   /** Called with every valid value as typed, in the display unit (used to show a parent weight on partial rows). */
   onValueChange?: (value: number | null) => void;
+  /** Called on every keystroke, valid or not (hides "Use" once the set is typed into). */
+  onEdit?: () => void;
   /** Called when the field is left, with its valid value (null when empty or invalid). */
   onBlurValue?: (value: number | null) => void;
   /** Called when a write fails, with a function that retries it. */
@@ -30,7 +32,7 @@ type Props = {
  * was typed (SPEC.md 3.5, 6). Invalid values are shown but never saved.
  * Weights are typed in the chosen unit and stored in kg.
  */
-export function SetField({ setId, field, initial, autoFocus, onValueChange, onBlurValue, onSaveError }: Props) {
+export function SetField({ setId, field, initial, autoFocus, onValueChange, onEdit, onBlurValue, onSaveError }: Props) {
   const db = useSQLiteContext();
   const { unit } = useSettings();
   const shown = initial === null ? null : field === 'weight' ? toDisplayWeight(initial, unit) : initial;
@@ -56,6 +58,7 @@ export function SetField({ setId, field, initial, autoFocus, onValueChange, onBl
 
   function onChangeText(t: string) {
     setText(t);
+    onEdit?.();
     const parsed = field === 'reps' ? parseReps(t) : parseWeight(t);
     if (!parsed.ok) {
       setError(parsed.message);

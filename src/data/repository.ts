@@ -827,6 +827,30 @@ export async function addSet(db: SQLiteDatabase, workoutId: string, variationId:
   return id;
 }
 
+/**
+ * Fill from last time (SPEC.md 3.5): copies last time's reps and weight into
+ * the fields of this set that are still empty, never over a stored value.
+ * Returns the set's values afterwards, and whether the fill changed anything.
+ */
+export async function fillSetFromLast(
+  db: SQLiteDatabase,
+  setId: string,
+  reps: number | null,
+  weight: number | null,
+): Promise<{ reps: number | null; weight: number | null; changed: boolean }> {
+  const before = await db.getFirstAsync<{ reps: number | null; weight: number | null }>(
+    'SELECT reps, weight FROM workout_set WHERE id = ?',
+    setId,
+  );
+  if (!before) return { reps: null, weight: null, changed: false };
+  const after = { reps: before.reps ?? reps, weight: before.weight ?? weight };
+  const changed = after.reps !== before.reps || after.weight !== before.weight;
+  if (changed) {
+    await db.runAsync('UPDATE workout_set SET reps = ?, weight = ?, updated_at = ? WHERE id = ?', after.reps, after.weight, now(), setId);
+  }
+  return { ...after, changed };
+}
+
 export async function updateSetField(
   db: SQLiteDatabase,
   setId: string,

@@ -209,6 +209,7 @@ These terms are used throughout the spec. They are defined for a reader who has 
 4. "Also logged this workout" line, shown only if other variations of this exercise already have sets in the current workout: "Also logged this workout: Standing cable curl (2 sets)". Tapping it switches the selected variation back to that one (same effect as choosing it in the swap screen).
 5. The set list for the selected variation in this workout. Each normal set is a row:
    - Label "Set 1", "Set 2", … (numbered by order among normal sets of this variation in this workout).
+   - "Last 8 × 60 kg": the set with the same number on this variation in the last completed workout, when there is one. When this set has nothing stored yet, a "Use" button follows it.
    - "Reps" field (number).
    - "kg" field (number).
    - "+ Intensifier" button.
@@ -227,6 +228,7 @@ These terms are used throughout the spec. They are defined for a reader who has 
 - Back navigation returns to Day detail.
 
 **Actions:**
+- "Use" (fill from last time) → a typed value that hasn't saved yet is saved first. Then last time's reps and weight are copied into the fields that are still empty; a stored value is never overwritten. If last time had only one of the two, only that one is filled. The keyboard closes and "Use" disappears. Tapping Use means the set was done, so when the set ends up with both values and has no intensifier rows after it, the rest countdown starts at once, without the "Start rest?" prompt. Normal sets only: intensifier rows never get "Use".
 - "+ Add set" → appends a new empty normal set row for the selected variation. The new row's Reps field gets focus.
 - Focusing a field while the keyboard is open, or opening the keyboard → the screen scrolls so the field sits just above the keyboard, and extra space equal to the keyboard's height is added at the end of the list so every row can be scrolled into view. (Reason: on Android the app is drawn edge to edge, so the keyboard otherwise covers the lower fields.)
 - Typing in a field → the value is saved to storage within 500 ms of the last keystroke, and again when the field loses focus or the user leaves the screen. (Reason: the prototype must survive an app restart at any moment, including mid-workout.)

@@ -12,6 +12,7 @@ import {
   createVariationAndSwap,
   deleteDay,
   deleteExercise,
+  fillSetFromLast,
   finishWorkout,
   getCalendarWorkouts,
   getDataSummary,
@@ -433,4 +434,24 @@ test('a v3 database gains notes and keeps its data', async () => {
   assert.equal((await getExerciseHistory(db, bench, null))!.note, null); // existing variations start with no note
   await setVariationNote(db, benchVar, 'notch 3');
   assert.equal((await getExerciseHistory(db, bench, null))!.note, 'notch 3');
+});
+
+test('filling from last time fills empty fields and never overwrites', async () => {
+  const db = await openTestDb();
+  const { dayId, workoutId, benchVar } = await specWorkout(db);
+  await finishWorkout(db, workoutId);
+  const next = await startWorkout(db, dayId);
+  const empty = await addSet(db, next, benchVar);
+  assert.deepEqual(await fillSetFromLast(db, empty, 10, 60), { reps: 10, weight: 60, changed: true });
+  const half = await addSet(db, next, benchVar);
+  await updateSetField(db, half, 'reps', 7);
+  assert.deepEqual(await fillSetFromLast(db, half, 8, 60), { reps: 7, weight: 60, changed: true }); // typed reps win
+  assert.deepEqual(await fillSetFromLast(db, empty, 1, 1), { reps: 10, weight: 60, changed: false }); // a second tap changes nothing
+});
+
+test('filling from a last set with only reps fills only reps', async () => {
+  const db = await openTestDb();
+  const { workoutId, benchVar } = await specWorkout(db);
+  const s = await addSet(db, workoutId, benchVar);
+  assert.deepEqual(await fillSetFromLast(db, s, 12, null), { reps: 12, weight: null, changed: true });
 });
