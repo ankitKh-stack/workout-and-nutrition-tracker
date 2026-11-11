@@ -20,6 +20,8 @@ export type IntensifierType = 'drop' | 'partial' | 'superset';
 export class ValidationError extends Error {}
 
 const now = () => new Date().toISOString();
+/** A set row counts as logged once something is typed in; the empty row opening an exercise adds does not. */
+const LOGGED = '(s.reps IS NOT NULL OR s.weight IS NOT NULL)';
 const sameName = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
 // ---------------------------------------------------------------------------
@@ -121,20 +123,12 @@ export async function getDayDeletionCounts(
   return row ?? { exercises: 0, workouts: 0 };
 }
 
-/** Deletes the day and everything that belongs to it in one transaction. */
+/**
+ * Deletes the day and everything that belongs to it: its exercises, variations,
+ * workouts, sets and intensifiers go with it through ON DELETE CASCADE.
+ */
 export async function deleteDay(db: SQLiteDatabase, dayId: string): Promise<void> {
-  await db.withTransactionAsync(async () => {
-    const workoutIds = 'SELECT id FROM workout WHERE day_id = ?';
-    await db.runAsync(`DELETE FROM intensifier WHERE workout_id IN (${workoutIds})`, dayId);
-    await db.runAsync(`DELETE FROM workout_set WHERE workout_id IN (${workoutIds})`, dayId);
-    await db.runAsync('DELETE FROM workout WHERE day_id = ?', dayId);
-    await db.runAsync(
-      'DELETE FROM variation WHERE exercise_id IN (SELECT id FROM exercise WHERE day_id = ?)',
-      dayId,
-    );
-    await db.runAsync('DELETE FROM exercise WHERE day_id = ?', dayId);
-    await db.runAsync('DELETE FROM day_basket WHERE id = ?', dayId);
-  });
+  await db.runAsync('DELETE FROM day_basket WHERE id = ?', dayId);
 }
 
 // ---------------------------------------------------------------------------
@@ -214,7 +208,7 @@ export async function getDayDetail(db: SQLiteDatabase, dayId: string): Promise<D
        FROM workout_set s
        JOIN variation v ON v.id = s.variation_id
        LEFT JOIN intensifier i ON i.id = s.intensifier_id
-       WHERE s.workout_id = ? AND (s.intensifier_id IS NULL OR i.type = 'superset')
+       WHERE s.workout_id = ? AND (s.intensifier_id IS NULL OR i.type = 'superset') AND ${LOGGED}
        GROUP BY v.exercise_id`,
       workout.id,
     );
@@ -337,15 +331,9 @@ export async function deleteExercise(db: SQLiteDatabase, exerciseId: string): Pr
     'UPDATE day_basket SET updated_at = ? WHERE id = (SELECT day_id FROM exercise WHERE id = ?)',
     now(), exerciseId,
   );
-  const exerciseSets = `SELECT s.id FROM workout_set s JOIN variation v ON v.id = s.variation_id WHERE v.exercise_id = ?`;
-  const doomedIntensifiers = `SELECT id FROM intensifier WHERE parent_set_id IN (${exerciseSets}) OR partner_exercise_id = ?`;
-  await db.withTransactionAsync(async () => {
-    await db.runAsync(`DELETE FROM workout_set WHERE intensifier_id IN (${doomedIntensifiers})`, exerciseId, exerciseId);
-    await db.runAsync(`DELETE FROM intensifier WHERE id IN (${doomedIntensifiers})`, exerciseId, exerciseId);
-    await db.runAsync('DELETE FROM workout_set WHERE variation_id IN (SELECT id FROM variation WHERE exercise_id = ?)', exerciseId);
-    await db.runAsync('DELETE FROM variation WHERE exercise_id = ?', exerciseId);
-    await db.runAsync('DELETE FROM exercise WHERE id = ?', exerciseId);
-  });
+  // The rest goes through ON DELETE CASCADE: variations, their sets, those sets'
+  // intensifier rows, and superset rows that paired with this exercise.
+  await db.runAsync('DELETE FROM exercise WHERE id = ?', exerciseId);
 }
 
 // ---------------------------------------------------------------------------
@@ -366,9 +354,10 @@ export async function startWorkout(db: SQLiteDatabase, dayId: string): Promise<s
   return id;
 }
 
+/** Logged sets only (see LOGGED), the same rule auto-end uses. */
 export async function countWorkoutSets(db: SQLiteDatabase, workoutId: string): Promise<number> {
   const row = await db.getFirstAsync<{ n: number }>(
-    'SELECT COUNT(*) AS n FROM workout_set WHERE workout_id = ?',
+    `SELECT COUNT(*) AS n FROM workout_set s WHERE s.workout_id = ? AND ${LOGGED}`,
     workoutId,
   );
   return row?.n ?? 0;
@@ -451,7 +440,7 @@ export async function endInactiveWorkouts(db: SQLiteDatabase): Promise<void> {
   const open = await db.getAllAsync<{ id: string; lastActivity: string; logged: number }>(
     `SELECT w.id,
        MAX(w.updated_at, COALESCE((SELECT MAX(s.updated_at) FROM workout_set s WHERE s.workout_id = w.id), '')) AS lastActivity,
-       EXISTS (SELECT 1 FROM workout_set s WHERE s.workout_id = w.id AND (s.reps IS NOT NULL OR s.weight IS NOT NULL)) AS logged
+       EXISTS (SELECT 1 FROM workout_set s WHERE s.workout_id = w.id AND ${LOGGED}) AS logged
      FROM workout w WHERE w.status = 'in_progress'`,
   );
   for (const w of open) {
@@ -878,11 +867,7 @@ export async function removeSet(db: SQLiteDatabase, setId: string): Promise<void
       'UPDATE workout SET updated_at = ? WHERE id = (SELECT workout_id FROM workout_set WHERE id = ?)',
       now(), setId,
     );
-    await db.runAsync(
-      'DELETE FROM workout_set WHERE intensifier_id IN (SELECT id FROM intensifier WHERE parent_set_id = ?)',
-      setId,
-    );
-    await db.runAsync('DELETE FROM intensifier WHERE parent_set_id = ?', setId);
+    // Its intensifiers and their rows go with it through ON DELETE CASCADE.
     await db.runAsync('DELETE FROM workout_set WHERE id = ?', setId);
   });
 }
@@ -893,7 +878,7 @@ export async function removeIntensifier(db: SQLiteDatabase, intensifierId: strin
       'UPDATE workout SET updated_at = ? WHERE id = (SELECT workout_id FROM intensifier WHERE id = ?)',
       now(), intensifierId,
     );
-    await db.runAsync('DELETE FROM workout_set WHERE intensifier_id = ?', intensifierId);
+    // Its row goes with it through ON DELETE CASCADE.
     await db.runAsync('DELETE FROM intensifier WHERE id = ?', intensifierId);
   });
 }
@@ -1161,7 +1146,7 @@ export async function getDataSummary(db: SQLiteDatabase): Promise<DataSummary> {
        (SELECT COUNT(*) FROM day_basket) AS days,
        (SELECT COUNT(*) FROM exercise) AS exercises,
        (SELECT COUNT(*) FROM workout WHERE status = 'completed') AS workouts,
-       (SELECT COUNT(*) FROM workout_set s JOIN workout w ON w.id = s.workout_id WHERE w.status = 'completed') AS sets`,
+       (SELECT COUNT(*) FROM workout_set s JOIN workout w ON w.id = s.workout_id WHERE w.status = 'completed' AND ${LOGGED}) AS sets`,
   );
   return row ?? { days: 0, exercises: 0, workouts: 0, sets: 0 };
 }

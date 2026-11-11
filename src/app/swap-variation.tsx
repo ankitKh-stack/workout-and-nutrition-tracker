@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useState } from 'react';
-import { Text, View } from 'react-native';
+import { View } from 'react-native';
 
 import { KeyboardAwareScroll } from '@/components/KeyboardAwareScroll';
 import { Button, EmptyText, ErrorView, Field, InlineError, ListRow } from '@/components/ui';

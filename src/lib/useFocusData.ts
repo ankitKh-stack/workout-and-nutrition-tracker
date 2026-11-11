@@ -13,7 +13,6 @@ export function useFocusData<T>(load: () => Promise<T>, deps: unknown[]) {
   const [data, setData] = useState<T | undefined>(undefined);
   const [error, setError] = useState(false);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const reload = useCallback(async () => {
     try {
       const result = await load();
@@ -25,6 +24,8 @@ export function useFocusData<T>(load: () => Promise<T>, deps: unknown[]) {
       setError(true);
       return undefined;
     }
+    // The caller's deps decide when `load` is new; it is recreated every render otherwise.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 
   useFocusEffect(
