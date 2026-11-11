@@ -23,6 +23,7 @@ import {
   getSettings,
   getLoggingData,
   getWorkoutDetail,
+  getWorkoutPRs,
   listDays,
   removeSet,
   renameDay,
@@ -480,4 +481,56 @@ test('empty set rows are not counted as logged on the day screen or in the data 
   assert.equal((await getDayDetail(db, day))!.exercises[0].loggedSetCount, 1);
   await finishWorkout(db, workout);
   assert.equal((await getDataSummary(db)).sets, 1);
+});
+
+/** A finished workout on `day` with Bench sets [reps, weight][] and the Bench variation id. */
+async function benchWorkout(db: SQLiteDatabase, day: string, bench: string, sets: [number, number][]) {
+  await tick(); // a later start time than the previous workout
+  const w = await startWorkout(db, day);
+  const v = (await getLoggingData(db, w, bench))!.selectedVariationId;
+  const ids = [];
+  for (const [reps, weight] of sets) ids.push(await logSet(db, w, v, reps, weight));
+  return { w, v, ids };
+}
+
+test('a set that beats the same set last time is a PR; a tie is not', async () => {
+  const db = await openTestDb();
+  const day = await createDay(db, 'Push');
+  const bench = await addExercise(db, day, 'Bench');
+  const w1 = await benchWorkout(db, day, bench, [[10, 60], [5, 70]]);
+  await finishWorkout(db, w1.w);
+  const w2 = await benchWorkout(db, day, bench, [[10, 60], [8, 70], [12, 50]]);
+  await finishWorkout(db, w2.w);
+  assert.deepEqual(await getWorkoutPRs(db, w2.w), [
+    { label: 'Bench', setNumber: 2, reps: 8, weight: 70, lastReps: 5, lastWeight: 70 },
+  ]);
+});
+
+test('PRs ignore intensifier rows, empty last sets and older workouts', async () => {
+  const db = await openTestDb();
+  const day = await createDay(db, 'Push');
+  const bench = await addExercise(db, day, 'Bench');
+  const w1 = await benchWorkout(db, day, bench, [[8, 100]]);
+  await finishWorkout(db, w1.w);
+  const w2 = await benchWorkout(db, day, bench, [[5, 60]]);
+  const drop = await addIntensifier(db, w2.ids[0], 'drop');
+  await updateSetField(db, drop, 'reps', 20);
+  await updateSetField(db, drop, 'weight', 40);
+  await addSet(db, w2.w, w2.v); // Set 2 left empty
+  await finishWorkout(db, w2.w);
+  const w3 = await benchWorkout(db, day, bench, [[6, 60], [10, 60]]);
+  await finishWorkout(db, w3.w);
+  // Compared with w2 only (w1's 8×100 doesn't count); w2's Set 2 was empty, so no PR there.
+  assert.deepEqual(await getWorkoutPRs(db, w3.w), [
+    { label: 'Bench', setNumber: 1, reps: 6, weight: 60, lastReps: 5, lastWeight: 60 },
+  ]);
+});
+
+test('a first workout has no PRs', async () => {
+  const db = await openTestDb();
+  const day = await createDay(db, 'Push');
+  const bench = await addExercise(db, day, 'Bench');
+  const w1 = await benchWorkout(db, day, bench, [[8, 100]]);
+  await finishWorkout(db, w1.w);
+  assert.deepEqual(await getWorkoutPRs(db, w1.w), []);
 });

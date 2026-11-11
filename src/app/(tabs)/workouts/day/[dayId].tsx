@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ComponentRef } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { ReorderableList } from '@/components/ReorderableList';
@@ -15,10 +15,12 @@ import {
   getDayDeletionCounts,
   getDayDetail,
   getExerciseDeletionCounts,
+  getWorkoutPRs,
   reorderExercises,
   resumeWorkout,
   startWorkout,
   ValidationError,
+  type SetPR,
 } from '@/data/repository';
 import { confirmAsync } from '@/lib/dialogs';
 import { useRestTimer } from '@/lib/restTimer';
@@ -43,8 +45,12 @@ export default function DayDetailScreen() {
   const [dragging, setDragging] = useState(false);
   const [banner, setBanner] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  // Personal records of the workout just finished; gone on × or when leaving the screen.
+  const [prs, setPrs] = useState<SetPR[]>([]);
   // Set at once (state only updates on the next render), so a fast double tap starts one workout.
   const starting = useRef(false);
+  const finishing = useRef(false);
+  const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
 
   const { cancelFor } = useRestTimer();
   // No workout in progress (finished, auto-ended or discarded), or the day is gone: no rest to time.
@@ -78,6 +84,7 @@ export default function DayDetailScreen() {
     setActionError(null);
     try {
       await startWorkout(db, dayId);
+      setPrs([]);
       await reload();
     } catch {
       setActionError('Could not start the workout. Try again.');
@@ -98,6 +105,7 @@ export default function DayDetailScreen() {
     setActionError(null);
     try {
       await resumeWorkout(db, day.resumable.id);
+      setPrs([]);
       await reload();
     } catch (e) {
       setActionError(e instanceof ValidationError ? e.message : 'Could not resume the workout. Try again.');
@@ -128,7 +136,8 @@ export default function DayDetailScreen() {
   }
 
   async function onFinish() {
-    if (!day?.workout) return;
+    if (!day?.workout || finishing.current) return;
+    finishing.current = true;
     setActionError(null);
     try {
       // Reload first: the screen may have been left open in the background past
@@ -154,10 +163,15 @@ export default function DayDetailScreen() {
       }
       cancelFor({ workoutId: fresh.workout.id });
       setBanner('Workout saved');
+      // The workout is saved by now, so a failed PR read only means no card.
+      setPrs(await getWorkoutPRs(db, fresh.workout.id).catch(() => []));
+      // The card is at the top; Finish sits below a list that may be scrolled down.
+      scroll.current?.scrollTo({ y: 0, animated: true });
       await reload();
     } catch {
       setActionError('Could not save the workout. Try again.');
     }
+    finishing.current = false;
   }
 
   async function onDelete() {
@@ -257,7 +271,35 @@ export default function DayDetailScreen() {
           <Text style={[styles.bodyStrong, { color: colors.onPrimary, textAlign: 'center' }]}>{banner}</Text>
         </View>
       ) : null}
-      <ScrollView contentContainerStyle={styles.content} scrollEnabled={!dragging}>
+      <ScrollView ref={scroll} contentContainerStyle={styles.content} scrollEnabled={!dragging}>
+        {prs.length > 0 ? (
+          <View style={[styles.card, { gap: 4 }]} accessibilityLiveRegion="polite">
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text
+                style={[styles.bodyStrong, { flex: 1 }]}
+                accessibilityRole="header"
+                accessibilityLabel={`${plural(prs.length, 'personal record')} this workout`}
+              >
+                🏆 {plural(prs.length, 'PR')} this workout
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Dismiss personal records"
+                onPress={() => setPrs([])}
+                hitSlop={12}
+                style={{ padding: 4 }}
+              >
+                <Ionicons name="close" size={18} color={colors.faint} />
+              </Pressable>
+            </View>
+            {prs.map((p) => (
+              <Text key={`${p.label}:${p.setNumber}`} style={[styles.body, styles.number]}>
+                {p.label} Set {p.setNumber} · {p.reps} × {formatWeight(p.weight, unit)} {unit} (was {p.lastReps} ×{' '}
+                {formatWeight(p.lastWeight, unit)})
+              </Text>
+            ))}
+          </View>
+        ) : null}
         {/* The day at a glance: the workout running now, or how the last one went. */}
         <View style={[styles.card, { flexDirection: 'row', alignItems: 'center' }]}>
           <View style={{ flex: 1, gap: 2 }}>

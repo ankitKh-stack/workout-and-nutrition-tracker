@@ -483,13 +483,7 @@ export async function getWorkoutDetail(db: SQLiteDatabase, workoutId: string): P
     workoutId,
   );
   if (!w) return null;
-  const variations = await db.getAllAsync<{ id: string; exercise: string; variation: string }>(
-    `SELECT v.id, e.name AS exercise, v.name AS variation
-     FROM variation v JOIN exercise e ON e.id = v.exercise_id
-     WHERE EXISTS (SELECT 1 FROM workout_set s WHERE s.workout_id = ? AND s.variation_id = v.id AND s.intensifier_id IS NULL)
-     ORDER BY e.position ASC, v.created_at ASC`,
-    workoutId,
-  );
+  const variations = await variationsIn(db, workoutId);
   const exercises = [];
   for (const v of variations) {
     exercises.push({ variationId: v.id, label: variationLabel(v.exercise, v.variation), sets: await setsWithIntensifiers(db, workoutId, v.id) });
@@ -505,6 +499,60 @@ export async function getWorkoutDetail(db: SQLiteDatabase, workoutId: string): P
     progress: (await completedWorkouts(db, w.day_id)).find((c) => c.id === workoutId)?.progress ?? null,
     exercises,
   };
+}
+
+/** Each variation with normal sets in a workout, in the day's exercise order. */
+function variationsIn(db: SQLiteDatabase, workoutId: string) {
+  return db.getAllAsync<{ id: string; exercise: string; variation: string }>(
+    `SELECT v.id, e.name AS exercise, v.name AS variation
+     FROM variation v JOIN exercise e ON e.id = v.exercise_id
+     WHERE EXISTS (SELECT 1 FROM workout_set s WHERE s.workout_id = ? AND s.variation_id = v.id AND s.intensifier_id IS NULL)
+     ORDER BY e.position ASC, v.created_at ASC`,
+    workoutId,
+  );
+}
+
+/** "Last time": the most recent completed workout, other than this one, with normal sets on the variation. */
+function lastWorkoutWith(db: SQLiteDatabase, variationId: string, excludeWorkoutId: string) {
+  return db.getFirstAsync<{ id: string; date: string }>(
+    `SELECT w.id, w.date FROM workout w
+     WHERE w.status = 'completed' AND w.id != ? AND EXISTS (
+       SELECT 1 FROM workout_set s
+       WHERE s.workout_id = w.id AND s.variation_id = ? AND s.intensifier_id IS NULL)
+     ORDER BY w.started_at DESC LIMIT 1`,
+    excludeWorkoutId, variationId,
+  );
+}
+
+export type SetPR = { label: string; setNumber: number; reps: number; weight: number; lastReps: number; lastWeight: number };
+
+/**
+ * Personal records (SPEC.md 3.3): normal sets whose reps × weight beat the
+ * same set number on the same variation last time. Ties and sets with
+ * nothing to compare with are not records.
+ */
+export async function getWorkoutPRs(db: SQLiteDatabase, workoutId: string): Promise<SetPR[]> {
+  const prs: SetPR[] = [];
+  for (const v of await variationsIn(db, workoutId)) {
+    const last = await lastWorkoutWith(db, v.id, workoutId);
+    if (!last) continue;
+    const before = await normalSets(db, last.id, v.id);
+    (await normalSets(db, workoutId, v.id)).forEach((s, i) => {
+      const b = before[i];
+      if (!b || s.reps === null || s.weight === null || b.reps === null || b.weight === null) return;
+      if (s.reps * s.weight > b.reps * b.weight) {
+        prs.push({
+          label: variationLabel(v.exercise, v.variation),
+          setNumber: i + 1,
+          reps: s.reps,
+          weight: s.weight,
+          lastReps: b.reps,
+          lastWeight: b.weight,
+        });
+      }
+    });
+  }
+  return prs;
 }
 
 // ---------------------------------------------------------------------------
@@ -696,15 +744,7 @@ export async function getLoggingData(
     });
   }
 
-  // "Last time": the most recent completed workout with normal sets on this variation.
-  const lastWorkout = await db.getFirstAsync<{ id: string; date: string }>(
-    `SELECT w.id, w.date FROM workout w
-     WHERE w.status = 'completed' AND w.id != ? AND EXISTS (
-       SELECT 1 FROM workout_set s
-       WHERE s.workout_id = w.id AND s.variation_id = ? AND s.intensifier_id IS NULL)
-     ORDER BY w.started_at DESC LIMIT 1`,
-    workoutId, selectedId,
-  );
+  const lastWorkout = await lastWorkoutWith(db, selectedId, workoutId);
   const lastTime = lastWorkout
     ? {
         date: lastWorkout.date,
