@@ -381,12 +381,13 @@ function toVolumeInput(r: VolumeRow): VolumeSetInput {
   return { reps: r.reps, weight: r.weight, isPartial: r.itype === 'partial', parentWeight: r.parent_weight };
 }
 
+// TODO(ankit): check this note, moved here from finishWorkout in the audit (finding 7).
+/** Volume is not stored: every screen computes it from the sets, so it always matches them. */
 export async function computeWorkoutVolume(db: SQLiteDatabase, workoutId: string): Promise<number> {
   const rows = await db.getAllAsync<VolumeRow>(`${VOLUME_QUERY} WHERE s.workout_id = ?`, workoutId);
   return workoutVolume(rows.map(toVolumeInput));
 }
 
-/** Volume is not stored: every screen computes it from the sets, so it always matches them. */
 /**
  * Finishes a workout in progress. Returns false, and changes nothing, when it
  * is no longer in progress: for example a screen left open in the background

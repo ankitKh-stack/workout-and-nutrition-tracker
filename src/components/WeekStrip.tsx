@@ -4,7 +4,7 @@ import { Pressable, Text, View } from 'react-native';
 import type { CalendarWorkout } from '@/data/repository';
 import { darkerLevel, type ShadeLevel } from '@/domain/progress';
 import { formatDateShort, localDateString, plural } from '@/lib/format';
-import { fonts } from '@/theme/palette';
+import { fonts, onShade } from '@/theme/palette';
 import { useTheme } from '@/theme/settings';
 
 const WEEKDAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
@@ -25,8 +25,7 @@ export function WeekStrip({ workouts }: { workouts: CalendarWorkout[] }) {
     workouts.filter((w) => w.date === date).reduce<ShadeLevel>((acc, w) => darkerLevel(acc, w.progress.level), 'none');
   const thisWeek = workouts.filter((w) => w.date >= days[0] && w.date <= days[6]).length;
   const latest = workouts.reduce<string | null>((d, w) => (d === null || w.date > d ? w.date : d), null);
-  const letterColor = (l: ShadeLevel) =>
-    theme === 'dark' ? (l === 2 || l === 3 || l === 4 ? '#000000' : colors.muted) : l === 4 ? '#ffffff' : colors.muted;
+  const letterColor = (l: ShadeLevel) => onShade(l, theme) ?? colors.muted;
 
   return (
     <Pressable

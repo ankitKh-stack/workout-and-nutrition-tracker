@@ -15,7 +15,7 @@ import {
   parseLocalDate,
 } from '@/lib/format';
 import { useFocusData } from '@/lib/useFocusData';
-import { fonts } from '@/theme/palette';
+import { fonts, onShade } from '@/theme/palette';
 import { useSettings, useTheme } from '@/theme/settings';
 
 const WEEKDAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
@@ -75,12 +75,7 @@ export default function CalendarScreen() {
 
   const levelFor = (date: string): ShadeLevel =>
     (byDate.get(date) ?? []).reduce<ShadeLevel>((acc, w) => darkerLevel(acc, w.progress.level), 'none');
-  // Day numbers stay readable (4.5:1) on every shade: black on the bright limes in
-  // dark mode, white on the darkest green in light mode.
-  const numberColor = (l: ShadeLevel) => {
-    if (theme === 'dark') return l === 2 || l === 3 || l === 4 ? '#000000' : l === 'none' ? colors.muted : colors.text;
-    return l === 4 ? '#ffffff' : l === 'none' ? colors.muted : colors.text;
-  };
+  const numberColor = (l: ShadeLevel) => onShade(l, theme) ?? (l === 'none' ? colors.muted : colors.text);
 
   const selectedWorkouts = selected
     ? [...(byDate.get(selected) ?? [])].sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1))
