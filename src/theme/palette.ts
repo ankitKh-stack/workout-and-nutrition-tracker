@@ -1,3 +1,5 @@
+import type { ShadeLevel } from '@/domain/progress';
+
 // Colour tokens for the light and dark themes.
 //
 // Dark follows the "true-black flat" app style: a #000 ground, cards one
@@ -68,6 +70,16 @@ export const palettes: Record<ThemeName, Palette> = {
 };
 
 /** Inter, loaded in the root layout. Each weight is its own family so it renders the same on Android, iOS and web. */
+/**
+ * Text colour that stays readable (4.5:1) on a calendar shade: black on the bright
+ * limes in dark mode, white on the darkest green in light mode. Null means the
+ * shade is light enough for the screen's normal text colour.
+ */
+export function onShade(level: ShadeLevel, theme: ThemeName): string | null {
+  if (theme === 'dark') return level === 2 || level === 3 || level === 4 ? '#000000' : null;
+  return level === 4 ? '#ffffff' : null;
+}
+
 export const fonts = {
   regular: 'Inter_400Regular',
   medium: 'Inter_500Medium',
