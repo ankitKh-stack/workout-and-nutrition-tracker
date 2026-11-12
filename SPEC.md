@@ -220,7 +220,7 @@ These terms are used throughout the spec. They are defined for a reader who has 
    - Partial reps row: label "Partials", "Reps" field, and read-only text showing the parent set's weight ("@ 20 kg", or "@ — kg" if the parent weight is empty), "Remove". There is no weight field.
    - Superset row: label "Superset: Triceps pushdown" (the partner exercise's name, plus its variation name in brackets if it differs), "Reps" field, "kg" field, "Remove".
    - Superset partner sets that were started from another exercise (see below) appear in this exercise's list as normal-looking rows labelled "Superset with Bicep curl, Set 2", with "Reps" and "kg" fields, so they can be edited from either side.
-6. "+ Add set" button at the end of the list.
+6. "+ Add set" button at the end of the list. Tapping it shows two choices: "Working set" (first) and "Warm-up set".
 
 **Fields and controls:**
 - Reps fields: numeric keypad, whole numbers 0–999.
@@ -230,7 +230,8 @@ These terms are used throughout the spec. They are defined for a reader who has 
 
 **Actions:**
 - "Use" (fill from last time) → a typed value that hasn't saved yet is saved first. Then last time's reps and weight are copied into the fields that are still empty; a stored value is never overwritten. If last time had only one of the two, only that one is filled. The keyboard closes and "Use" disappears. Tapping Use means the set was done, so when the set ends up with both values and has no intensifier rows after it, the rest countdown starts at once, without the "Start rest?" prompt. Normal sets only: intensifier rows never get "Use".
-- "+ Add set" → appends a new empty normal set row for the selected variation. The new row's Reps field gets focus.
+- "+ Add set" → "Working set" appends a new empty working set; "Warm-up set" adds a new empty warm-up set at the top, after any existing warm-ups and before the working sets. The new row's Reps field gets focus. The set auto-created when an exercise is opened is a working set.
+- **Warm-up sets:** shown as "W1", "W2"… above the working sets, which keep "Set 1", "Set 2"…. A warm-up card is indented, with lighter "Reps" and "Weight" labels, and has no "+ Intensifier". Warm-ups count for no volume (so not the calendar shade, the % change, History or exercise history volume) and are never personal records (3.3). They never offer rest, typed or filled. "Last" and "Use" match a warm-up with last time's warm-up of the same number (W1 with W1) and a working set with last time's working set of the same number, so adding warm-ups never shifts the working-set comparison. A typed warm-up still counts as a logged set.
 - Focusing a field while the keyboard is open, or opening the keyboard → the screen scrolls so the field sits just above the keyboard, and extra space equal to the keyboard's height is added at the end of the list so every row can be scrolled into view. (Reason: on Android the app is drawn edge to edge, so the keyboard otherwise covers the lower fields.)
 - Typing in a field → the value is saved to storage within 500 ms of the last keystroke, and again when the field loses focus or the user leaves the screen. (Reason: the prototype must survive an app restart at any moment, including mid-workout.)
 - "+ Intensifier" → opens the Intensifier picker (3.6) for that set.
@@ -601,7 +602,8 @@ Relation: a Workout belongs to exactly one DayBasket and has many Sets and Inten
 - `workoutId` — the Workout it was logged in.
 - `variationId` — the Variation it was performed on. Never changed by a swap.
 - `intensifierId` — empty for a normal set; for an intensifier row, the Intensifier it belongs to.
-- `position` — order among normal sets of the same variation in the same workout (used for "Set 1, Set 2" numbering).
+- `position` — order among normal sets of the same variation in the same workout. Sets are listed warm-ups first, then working sets, each by position, and numbered within their group ("W1, W2", "Set 1, Set 2").
+- `isWarmup` — true for a warm-up set (schema version 5); existing sets are working sets. Warm-ups are left out of volume and records.
 - `reps` — whole number 0–999, or empty.
 - `weight` — number in kg, or empty; always empty for a partial reps row. The 0–9999, 2-decimal limit applies to the value typed in the chosen unit.
 

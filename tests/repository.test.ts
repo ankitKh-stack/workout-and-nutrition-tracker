@@ -170,8 +170,8 @@ test('the next workout shows last time\'s normal sets', async () => {
   const next = await startWorkout(db, dayId);
   const data = (await getLoggingData(db, next, bench))!;
   assert.deepEqual(data.lastTime?.sets, [
-    { reps: 10, weight: 60 },
-    { reps: 8, weight: 60 },
+    { reps: 10, weight: 60, warmup: false, number: 1 },
+    { reps: 8, weight: 60, warmup: false, number: 2 },
   ]);
 });
 
@@ -429,9 +429,9 @@ test('a v3 database gains notes and keeps its data', async () => {
   const db = await openTestDb();
   const { bench, workoutId, benchVar } = await specWorkout(db);
   await finishWorkout(db, workoutId);
-  await db.execAsync('ALTER TABLE variation DROP COLUMN note; PRAGMA user_version = 3;');
+  await db.execAsync('ALTER TABLE variation DROP COLUMN note; ALTER TABLE workout_set DROP COLUMN is_warmup; PRAGMA user_version = 3;');
   await initializeDatabase(db);
-  assert.equal((await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version'))!.user_version, 4);
+  assert.equal((await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version'))!.user_version, 5);
   assert.equal(await computeWorkoutVolume(db, workoutId), 1860);
   assert.equal((await getExerciseHistory(db, bench, null))!.note, null); // existing variations start with no note
   await setVariationNote(db, benchVar, 'notch 3');
@@ -533,4 +533,79 @@ test('a first workout has no PRs', async () => {
   const w1 = await benchWorkout(db, day, bench, [[8, 100]]);
   await finishWorkout(db, w1.w);
   assert.deepEqual(await getWorkoutPRs(db, w1.w), []);
+});
+
+test('warm-ups are numbered apart, sit above working sets and add no volume', async () => {
+  const db = await openTestDb();
+  const day = await createDay(db, 'Push');
+  const bench = await addExercise(db, day, 'Bench');
+  const w = await startWorkout(db, day);
+  const v = (await getLoggingData(db, w, bench))!.selectedVariationId;
+  await logSet(db, w, v, 8, 60);
+  for (const [reps, weight] of [[10, 20], [8, 40]]) {
+    const id = await addSet(db, w, v, true);
+    await updateSetField(db, id, 'reps', reps);
+    await updateSetField(db, id, 'weight', weight);
+  }
+  const sets = (await getLoggingData(db, w, bench))!.sets;
+  assert.deepEqual(sets.map((s) => [s.warmup, s.number, s.reps]), [[true, 1, 10], [true, 2, 8], [false, 1, 8]]);
+  assert.equal(await computeWorkoutVolume(db, w), 480);
+  await finishWorkout(db, w);
+  assert.equal((await getCalendarWorkouts(db))[0].volume, 480);
+  assert.equal((await getExerciseHistory(db, bench, null))!.workouts[0].volume, 480);
+});
+
+test('last time lists warm-ups and working sets with their own numbers', async () => {
+  const db = await openTestDb();
+  const day = await createDay(db, 'Push');
+  const bench = await addExercise(db, day, 'Bench');
+  const w1 = await startWorkout(db, day);
+  const v = (await getLoggingData(db, w1, bench))!.selectedVariationId;
+  const wu = await addSet(db, w1, v, true);
+  await updateSetField(db, wu, 'reps', 10);
+  await updateSetField(db, wu, 'weight', 20);
+  await logSet(db, w1, v, 8, 60);
+  await finishWorkout(db, w1);
+  await tick();
+  const w2 = await startWorkout(db, day);
+  assert.deepEqual((await getLoggingData(db, w2, bench))!.lastTime?.sets, [
+    { reps: 10, weight: 20, warmup: true, number: 1 },
+    { reps: 8, weight: 60, warmup: false, number: 1 },
+  ]);
+});
+
+test('warm-ups never count as PRs', async () => {
+  const db = await openTestDb();
+  const day = await createDay(db, 'Push');
+  const bench = await addExercise(db, day, 'Bench');
+  for (const reps of [5, 10]) {
+    await tick();
+    const w = await startWorkout(db, day);
+    const v = (await getLoggingData(db, w, bench))!.selectedVariationId;
+    const wu = await addSet(db, w, v, true);
+    await updateSetField(db, wu, 'reps', reps);
+    await updateSetField(db, wu, 'weight', 20);
+    await finishWorkout(db, w);
+    if (reps === 10) assert.deepEqual(await getWorkoutPRs(db, w), []);
+  }
+});
+
+test('a v4 database gains warm-ups with every old set a working set', async () => {
+  const db = await openTestDb();
+  const { workoutId } = await specWorkout(db);
+  await finishWorkout(db, workoutId);
+  await db.execAsync('ALTER TABLE workout_set DROP COLUMN is_warmup; PRAGMA user_version = 4;');
+  await initializeDatabase(db);
+  assert.equal((await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version'))!.user_version, 5);
+  assert.equal(await computeWorkoutVolume(db, workoutId), 1860);
+});
+
+test('a warm-up set cannot take an intensifier', async () => {
+  const db = await openTestDb();
+  const day = await createDay(db, 'Push');
+  const bench = await addExercise(db, day, 'Bench');
+  const w = await startWorkout(db, day);
+  const v = (await getLoggingData(db, w, bench))!.selectedVariationId;
+  const wu = await addSet(db, w, v, true);
+  await assert.rejects(addIntensifier(db, wu, 'drop'), ValidationError);
 });

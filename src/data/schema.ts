@@ -1,7 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 export const DATABASE_NAME = 'workout-tracker.db';
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 /**
  * Creates the tables on first launch and records the schema version so later
@@ -100,6 +100,10 @@ export async function initializeDatabase(db: SQLiteDatabase): Promise<void> {
     if (version.user_version < 4) {
       // A note on each variation, e.g. "bench at notch 3" (NULL = no note).
       await db.execAsync('ALTER TABLE variation ADD COLUMN note TEXT;');
+    }
+    if (version.user_version < 5) {
+      // Warm-up sets: left out of volume and records. Existing sets are working sets.
+      await db.execAsync('ALTER TABLE workout_set ADD COLUMN is_warmup INTEGER NOT NULL DEFAULT 0;');
     }
     await db.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
   });
