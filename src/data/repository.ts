@@ -384,7 +384,7 @@ function toVolumeInput(r: VolumeRow): VolumeSetInput {
 // TODO(ankit): check this note, moved here from finishWorkout in the audit (finding 7).
 /** Volume is not stored: every screen computes it from the sets, so it always matches them. */
 export async function computeWorkoutVolume(db: SQLiteDatabase, workoutId: string): Promise<number> {
-  const rows = await db.getAllAsync<VolumeRow>(`${VOLUME_QUERY} WHERE s.workout_id = ?`, workoutId);
+  const rows = await db.getAllAsync<VolumeRow>(`${VOLUME_QUERY} WHERE s.workout_id = ? AND s.is_warmup = 0`, workoutId);
   return workoutVolume(rows.map(toVolumeInput));
 }
 
@@ -536,8 +536,8 @@ export async function getWorkoutPRs(db: SQLiteDatabase, workoutId: string): Prom
   for (const v of await variationsIn(db, workoutId)) {
     const last = await lastWorkoutWith(db, v.id, workoutId);
     if (!last) continue;
-    const before = await normalSets(db, last.id, v.id);
-    (await normalSets(db, workoutId, v.id)).forEach((s, i) => {
+    const before = await workingSets(db, last.id, v.id);
+    (await workingSets(db, workoutId, v.id)).forEach((s, i) => {
       const b = before[i];
       if (!b || s.reps === null || s.weight === null || b.reps === null || b.weight === null) return;
       if (s.reps * s.weight > b.reps * b.weight) {
@@ -564,6 +564,7 @@ type SetRow = {
   variation_id: string;
   intensifier_id: string | null;
   position: number;
+  is_warmup: number;
   reps: number | null;
   weight: number | null;
 };
@@ -580,6 +581,8 @@ export type IntensifierRow = {
 
 export type NormalSetRow = {
   setId: string;
+  /** Warm-ups come first and are numbered on their own (W1, W2…), then working sets (Set 1, Set 2…). */
+  warmup: boolean;
   number: number;
   reps: number | null;
   weight: number | null;
@@ -603,7 +606,7 @@ export type LoggingData = {
   selectedVariationName: string;
   /** The selected variation's note, or null when it has none. */
   selectedVariationNote: string | null;
-  lastTime: { date: string; sets: { reps: number | null; weight: number | null }[] } | null;
+  lastTime: { date: string; sets: { reps: number | null; weight: number | null; warmup: boolean; number: number }[] } | null;
   alsoLogged: { variationId: string; name: string; count: number }[];
   sets: NormalSetRow[];
   partnerSets: PartnerSetRow[];
@@ -636,9 +639,21 @@ async function normalSets(db: SQLiteDatabase, workoutId: string, variationId: st
   return db.getAllAsync<SetRow>(
     `SELECT * FROM workout_set
      WHERE workout_id = ? AND variation_id = ? AND intensifier_id IS NULL
-     ORDER BY position ASC`,
+     ORDER BY is_warmup DESC, position ASC`,
     workoutId, variationId,
   );
+}
+
+/** Normal sets without warm-ups: what set numbers in labels, supersets and records refer to. */
+async function workingSets(db: SQLiteDatabase, workoutId: string, variationId: string): Promise<SetRow[]> {
+  return (await normalSets(db, workoutId, variationId)).filter((s) => !s.is_warmup);
+}
+
+/** Each set with its number within its group: warm-ups 1.., then working sets 1... */
+function numbered(sets: SetRow[]) {
+  let warmups = 0;
+  let working = 0;
+  return sets.map((s) => ({ set: s, warmup: !!s.is_warmup, number: s.is_warmup ? ++warmups : ++working }));
 }
 
 /** Normal sets of one variation in one workout, numbered, each with its intensifier rows. */
@@ -665,9 +680,10 @@ async function setsWithIntensifiers(db: SQLiteDatabase, workoutId: string, varia
      ORDER BY i.position ASC`,
     workoutId, variationId,
   );
-  return sets.map((s, index) => ({
+  return numbered(sets).map(({ set: s, warmup, number }) => ({
     setId: s.id,
-    number: index + 1,
+    warmup,
+    number,
     reps: s.reps,
     weight: s.weight,
     intensifiers: intensifiers
@@ -733,7 +749,7 @@ export async function getLoggingData(
   );
   const partnerSets: PartnerSetRow[] = [];
   for (const p of partners) {
-    const siblings = await normalSets(db, workoutId, p.parent_variation_id);
+    const siblings = await workingSets(db, workoutId, p.parent_variation_id);
     const number = siblings.findIndex((s) => s.id === p.parent_set_id) + 1;
     partnerSets.push({
       setId: p.id,
@@ -748,7 +764,12 @@ export async function getLoggingData(
   const lastTime = lastWorkout
     ? {
         date: lastWorkout.date,
-        sets: (await normalSets(db, lastWorkout.id, selectedId)).map((s) => ({ reps: s.reps, weight: s.weight })),
+        sets: numbered(await normalSets(db, lastWorkout.id, selectedId)).map(({ set, warmup, number }) => ({
+          reps: set.reps,
+          weight: set.weight,
+          warmup,
+          number,
+        })),
       }
     : null;
 
@@ -825,7 +846,7 @@ export async function getExerciseHistory(
     // Volume of this variation only, by the same rules as a whole workout (SPEC.md 5.7).
     // Superset rows belong to the partner exercise, so they are left out here.
     const volume = workoutVolume(
-      sets.flatMap((s) => [
+      sets.filter((s) => !s.warmup).flatMap((s) => [
         { reps: s.reps, weight: s.weight, isPartial: false, parentWeight: null },
         ...s.intensifiers.filter((i) => i.type !== 'superset').map((i) => ({
           reps: i.reps,
@@ -840,8 +861,8 @@ export async function getExerciseHistory(
   return { exerciseName: exercise.name, selectedVariationId: selectedId, variations, note, workouts };
 }
 
-/** Appends an empty normal set for a variation in a workout. */
-export async function addSet(db: SQLiteDatabase, workoutId: string, variationId: string): Promise<string> {
+/** Appends an empty normal set for a variation in a workout; a warm-up sorts above the working sets. */
+export async function addSet(db: SQLiteDatabase, workoutId: string, variationId: string, warmup = false): Promise<string> {
   const id = randomUUID();
   const t = now();
   const pos = await db.getFirstAsync<{ p: number | null }>(
@@ -850,9 +871,9 @@ export async function addSet(db: SQLiteDatabase, workoutId: string, variationId:
     workoutId, variationId,
   );
   await db.runAsync(
-    `INSERT INTO workout_set (id, workout_id, variation_id, intensifier_id, position, reps, weight, created_at, updated_at)
-     VALUES (?, ?, ?, NULL, ?, NULL, NULL, ?, ?)`,
-    id, workoutId, variationId, (pos?.p ?? 0) + 1, t, t,
+    `INSERT INTO workout_set (id, workout_id, variation_id, intensifier_id, position, reps, weight, is_warmup, created_at, updated_at)
+     VALUES (?, ?, ?, NULL, ?, NULL, NULL, ?, ?, ?)`,
+    id, workoutId, variationId, (pos?.p ?? 0) + 1, warmup ? 1 : 0, t, t,
   );
   return id;
 }
@@ -947,7 +968,7 @@ export async function getIntensifierPickerData(
     setId,
   );
   if (!parent) return null;
-  const siblings = await normalSets(db, workoutId, parent.variation_id);
+  const siblings = await workingSets(db, workoutId, parent.variation_id);
   const number = siblings.findIndex((s) => s.id === setId) + 1;
   const superset = await db.getFirstAsync<{ id: string }>(
     "SELECT id FROM intensifier WHERE parent_set_id = ? AND type = 'superset'",
@@ -980,6 +1001,7 @@ export async function addIntensifier(
   const parent = await db.getFirstAsync<SetRow>('SELECT * FROM workout_set WHERE id = ?', parentSetId);
   if (!parent) throw new Error('Set not found');
   if (parent.intensifier_id !== null) throw new ValidationError('Intensifiers attach only to normal sets.');
+  if (parent.is_warmup) throw new ValidationError('Warm-up sets have no intensifiers.');
 
   let childVariationId = parent.variation_id;
   if (type === 'superset') {
@@ -1146,7 +1168,7 @@ async function completedWorkouts(db: SQLiteDatabase, dayId: string | null): Prom
     ...params,
   );
   const sets = await db.getAllAsync<VolumeRow>(
-    `${VOLUME_QUERY} JOIN workout w ON w.id = s.workout_id WHERE w.status = 'completed'${dayFilter}`,
+    `${VOLUME_QUERY} JOIN workout w ON w.id = s.workout_id WHERE w.status = 'completed' AND s.is_warmup = 0${dayFilter}`,
     ...params,
   );
   const setsByWorkout = new Map<string, VolumeSetInput[]>();

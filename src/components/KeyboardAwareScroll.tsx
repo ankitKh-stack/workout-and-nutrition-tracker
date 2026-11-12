@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ComponentRef, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ComponentRef, type ReactNode } from 'react';
 import {
   Dimensions,
   Keyboard,
@@ -16,10 +16,18 @@ import { useRestBarHeight } from '@/lib/restTimer';
 /** Space kept between the focused field and the top of the keyboard. */
 const MARGIN = 24;
 
-const EnsureVisibleContext = createContext<() => void>(() => {});
+type Measurable = { measureInWindow: (cb: (x: number, y: number, w: number, h: number) => void) => void };
+
+const EnsureVisibleContext = createContext<{ ensureVisible: () => void; reveal: (node: Measurable | null) => void }>({
+  ensureVisible: () => {},
+  reveal: () => {},
+});
 
 /** Called by fields when they gain focus, so the screen scrolls them above the keyboard. */
-export const useEnsureVisible = () => useContext(EnsureVisibleContext);
+export const useEnsureVisible = () => useContext(EnsureVisibleContext).ensureVisible;
+
+/** Scrolls a view (e.g. a menu that just opened) into the space above the keyboard, when it is open. */
+export const useRevealAboveKeyboard = () => useContext(EnsureVisibleContext).reveal;
 
 /**
  * A ScrollView that keeps the focused field above the on-screen keyboard.
@@ -41,22 +49,36 @@ export function KeyboardAwareScroll({ children, contentContainerStyle, ...rest }
   const barRef = useRef(barHeight);
   barRef.current = barHeight;
 
-  const ensureVisible = useCallback(() => {
+  /**
+   * Scrolls so the view sits between the top of the scroll area and the keyboard
+   * (and the rest bar above it): down when it is behind the keyboard, up when it
+   * is above the visible area, e.g. a warm-up set just added at the top.
+   */
+  const reveal = useCallback((node: Measurable | null) => {
     // Wait a frame so the layout (and the extra space) is in place before measuring.
     requestAnimationFrame(() => {
-      // No keyboard open: nothing to do. Checked first because on web there is
-      // never a keyboard event, and react-native-web's TextInput.State has no
-      // currentlyFocusedInput().
       const top = keyboardTop.current;
-      if (top === null) return;
-      const input = TextInput.State.currentlyFocusedInput();
-      if (!input) return;
-      input.measureInWindow((_x, y, _w, h) => {
+      if (top === null || !node) return;
+      node.measureInWindow((_x, y, _w, h) => {
         const overlap = y + h + MARGIN + barRef.current - top;
-        if (overlap > 0) scrollRef.current?.scrollTo({ y: offsetY.current + overlap, animated: true });
+        if (overlap > 0) return scrollRef.current?.scrollTo({ y: offsetY.current + overlap, animated: true });
+        (scrollRef.current as unknown as Measurable | null)?.measureInWindow((_sx, scrollTop) => {
+          const above = scrollTop + MARGIN - y;
+          if (above > 0) scrollRef.current?.scrollTo({ y: Math.max(0, offsetY.current - above), animated: true });
+        });
       });
     });
   }, []);
+
+  const ensureVisible = useCallback(() => {
+    // No keyboard open: nothing to do. Checked first because on web there is
+    // never a keyboard event, and react-native-web's TextInput.State has no
+    // currentlyFocusedInput().
+    if (keyboardTop.current === null) return;
+    reveal(TextInput.State.currentlyFocusedInput() ?? null);
+  }, [reveal]);
+
+  const context = useMemo(() => ({ ensureVisible, reveal }), [ensureVisible, reveal]);
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -84,7 +106,7 @@ export function KeyboardAwareScroll({ children, contentContainerStyle, ...rest }
   }, [barHeight, ensureVisible]);
 
   return (
-    <EnsureVisibleContext.Provider value={ensureVisible}>
+    <EnsureVisibleContext.Provider value={context}>
       <ScrollView
         ref={scrollRef}
         keyboardShouldPersistTaps="handled"

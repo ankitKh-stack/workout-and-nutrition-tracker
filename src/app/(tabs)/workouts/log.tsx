@@ -1,10 +1,10 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ComponentRef } from 'react';
 import { Keyboard, Pressable, Text, View } from 'react-native';
 
-import { KeyboardAwareScroll } from '@/components/KeyboardAwareScroll';
+import { KeyboardAwareScroll, useRevealAboveKeyboard } from '@/components/KeyboardAwareScroll';
 import { NoteWindow } from '@/components/NoteWindow';
 import { RestTimerBar } from '@/components/RestTimerBar';
 import { SetField } from '@/components/SetField';
@@ -40,6 +40,8 @@ export default function LogScreen() {
   const [failedWrites, setFailedWrites] = useState<(() => Promise<void>)[]>([]);
   const [actionError, setActionError] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  // "Add set" asks for a working set or a warm-up set.
+  const [adding, setAdding] = useState(false);
   /** The note window: closed, or open to read (Edit) or straight to editing (Write). */
   const [noteWindow, setNoteWindow] = useState<'closed' | 'read' | 'write'>('closed');
   const opened = useRef(false);
@@ -114,8 +116,8 @@ export default function LogScreen() {
     const n = await countIntensifiers(db, set.setId);
     if (n > 0) {
       const ok = await confirmAsync(
-        `Remove Set ${set.number}?`,
-        `Remove Set ${set.number} and its ${plural(n, 'intensifier')}?`,
+        `Remove ${setName(set)}?`,
+        `Remove ${setName(set)} and its ${plural(n, 'intensifier')}?`,
         'Remove',
         true,
       );
@@ -124,13 +126,17 @@ export default function LogScreen() {
     await run(() => removeSet(db, set.setId));
   }
 
+  /** Last time's set in the same place: W1 with W1, Set 1 with Set 1. */
+  const lastFor = (set: NormalSetRow) =>
+    data?.lastTime?.sets.find((l) => l.warmup === set.warmup && l.number === set.number) ?? null;
+
   /**
    * Fill from last time (SPEC.md 3.5): only for a set with nothing stored and a
    * set with the same number last time. Filling means the set was done, so the
    * rest starts straight away when the set is complete and nothing follows it.
    */
   function fillFor(set: NormalSetRow) {
-    const last = data?.lastTime?.sets[set.number - 1];
+    const last = lastFor(set);
     if (!data || !last || (last.reps === null && last.weight === null)) return undefined;
     if (set.reps !== null || set.weight !== null) return undefined;
     const owner = { dayId: data.dayId, workoutId };
@@ -140,7 +146,9 @@ export default function LogScreen() {
         // Queued behind any field saves, so typed values land first and are never overwritten.
         const row = await enqueueWrite(() => fillSetFromLast(db, set.setId, last.reps, last.weight));
         // Only a fill that changed the set starts the rest, so a second tap does nothing.
-        if (row.changed && newlyDone(false, 'normal', row.reps, row.weight) && offersRest(0, 1 + set.intensifiers.length)) {
+        // Warm-ups never offer rest.
+        const done = row.changed && !set.warmup && newlyDone(false, 'normal', row.reps, row.weight);
+        if (done && offersRest(0, 1 + set.intensifiers.length)) {
           rest.startNow(owner);
         }
       });
@@ -236,7 +244,7 @@ export default function LogScreen() {
             // Remount when stored values or the unit change so fields show fresh values.
             key={`${unit}:${set.setId}:${set.reps}:${set.weight}:${set.intensifiers.map((i) => `${i.reps}/${i.weight}`).join()}`}
             set={set}
-            last={data.lastTime?.sets[set.number - 1] ?? null}
+            last={lastFor(set)}
             focusId={focusId}
             onSaveError={onSaveError}
             onAddIntensifier={() =>
@@ -264,15 +272,18 @@ export default function LogScreen() {
           </View>
         ))}
 
-        <Button
-          label="Add set"
-          icon="add"
-          onPress={() =>
-            run(async () => {
-              requestFocus(await addSet(db, workoutId, data.selectedVariationId));
-            })
-          }
-        />
+        <Button label="Add set" icon="add" onPress={() => setAdding((a) => !a)} />
+        {adding ? (
+          <AddSetChooser
+            onPick={(warmup) => {
+              setAdding(false);
+              // The new set's Reps field takes focus, which scrolls it into view.
+              run(async () => {
+                requestFocus(await addSet(db, workoutId, data.selectedVariationId, warmup));
+              });
+            }}
+          />
+        ) : null}
       </KeyboardAwareScroll>
       <RestTimerBar dayId={data.dayId} />
       {noteWindow !== 'closed' ? (
@@ -292,6 +303,33 @@ export default function LogScreen() {
 }
 
 const edge = (color: string) => ({ borderLeftWidth: 3, borderLeftColor: color });
+
+/** The two choices under "Add set"; scrolls itself above the keyboard when it opens. */
+function AddSetChooser({ onPick }: { onPick: (warmup: boolean) => void }) {
+  const { styles } = useTheme();
+  const reveal = useRevealAboveKeyboard();
+  const ref = useRef<ComponentRef<typeof View>>(null);
+  return (
+    <View ref={ref} onLayout={() => reveal(ref.current)} style={[styles.card, { padding: 8, gap: 4 }]}>
+      {[
+        { label: 'Working set', warmup: false },
+        { label: 'Warm-up set', warmup: true },
+      ].map((o) => (
+        <Button
+          key={o.label}
+          label={o.label}
+          accessibilityLabel={`Add ${o.label.toLowerCase()}`}
+          variant="link"
+          style={{ alignItems: 'flex-start' }}
+          onPress={() => onPick(o.warmup)}
+        />
+      ))}
+    </View>
+  );
+}
+
+/** "W1" for a warm-up, "Set 1" for a working set. */
+const setName = (set: { warmup: boolean; number: number }) => (set.warmup ? `W${set.number}` : `Set ${set.number}`);
 
 /**
  * Calls onDone once, when leaving a field leaves the row with its values for
@@ -321,6 +359,7 @@ function FieldPair({
   onSaveError,
   kind = 'normal',
   onDone,
+  muted,
 }: {
   setId: string;
   reps: number | null;
@@ -333,14 +372,17 @@ function FieldPair({
   kind?: RowKind;
   /** Called once, when this row is done for the first time. */
   onDone?: () => void;
+  /** Lighter labels, for warm-up sets. */
+  muted?: boolean;
 }) {
   const { styles } = useTheme();
   const { unit } = useSettings();
   const left = useRowDone(kind, reps, weight, onDone);
+  const labelStyle = [styles.label, muted && { opacity: 0.7 }];
   return (
     <View style={{ flexDirection: 'row', gap: 10 }}>
       <View style={{ flex: 1, gap: 4 }}>
-        <Text style={styles.label}>Reps</Text>
+        <Text style={labelStyle}>Reps</Text>
         <SetField
           setId={setId}
           field="reps"
@@ -352,7 +394,7 @@ function FieldPair({
         />
       </View>
       <View style={{ flex: 1, gap: 4 }}>
-        <Text style={styles.label}>Weight ({unit})</Text>
+        <Text style={labelStyle}>Weight ({unit})</Text>
         <SetField
           setId={setId}
           field="weight"
@@ -396,7 +438,7 @@ function PartialRepsField({
 
 type SetBlockProps = {
   set: NormalSetRow;
-  /** The set with the same number from the last workout on this variation, if there was one. */
+  /** Last time's set in the same place (W1 with W1, Set 1 with Set 1), if there was one. */
   last: { reps: number | null; weight: number | null } | null;
   focusId: string | null;
   onSaveError: (retry: () => Promise<void>) => void;
@@ -419,12 +461,20 @@ function SetBlock({ set, last, focusId, onSaveError, onAddIntensifier, onRemove,
   const [typed, setTyped] = useState(false);
   // The rest comes after the set's last row: the set itself, or its last drop, partial or superset row.
   const rowCount = 1 + set.intensifiers.length;
-  const restAfter = (rowIndex: number) => (offersRest(rowIndex, rowCount) ? () => onRest(set.number) : undefined);
+  // Warm-ups never offer rest.
+  const restAfter = (rowIndex: number) =>
+    !set.warmup && offersRest(rowIndex, rowCount) ? () => onRest(set.number) : undefined;
 
   return (
-    <View style={styles.card}>
+    // A warm-up is indented, with lighter labels.
+    <View style={[styles.card, set.warmup && { marginLeft: 16 }]}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-        <Text style={[styles.bodyStrong, { flex: 1, fontSize: 16 }]}>Set {set.number}</Text>
+        <Text
+          style={[styles.bodyStrong, { flex: 1, fontSize: 16 }]}
+          accessibilityLabel={set.warmup ? `Warm-up ${set.number}` : undefined}
+        >
+          {setName(set)}
+        </Text>
         {last ? (
           <Text style={[styles.small, styles.number]}>
             Last {last.reps ?? '—'} × {formatWeight(last.weight, unit)} {unit}
@@ -435,7 +485,7 @@ function SetBlock({ set, last, focusId, onSaveError, onAddIntensifier, onRemove,
             label="Use"
             variant="link"
             compact
-            accessibilityLabel={`Use last time's ${last.reps ?? '—'} × ${formatWeight(last.weight, unit)} ${unit} for Set ${set.number}`}
+            accessibilityLabel={`Use last time's ${last.reps ?? '—'} × ${formatWeight(last.weight, unit)} ${unit} for ${setName(set)}`}
             onPress={onFill}
           />
         ) : null}
@@ -449,6 +499,7 @@ function SetBlock({ set, last, focusId, onSaveError, onAddIntensifier, onRemove,
         onEdit={() => setTyped(true)}
         onSaveError={onSaveError}
         onDone={restAfter(0)}
+        muted={set.warmup}
       />
       {set.intensifiers.map((i, index) => {
         // Each kind has its own mark: a 3px edge and its label in the kind's colour.
@@ -504,7 +555,8 @@ function SetBlock({ set, last, focusId, onSaveError, onAddIntensifier, onRemove,
         );
       })}
       <View style={[styles.buttonRow, { justifyContent: 'space-between' }]}>
-        <Button label="Intensifier" icon="add" variant="link" compact onPress={onAddIntensifier} />
+        {/* Warm-ups have no intensifiers. */}
+        {set.warmup ? <View /> : <Button label="Intensifier" icon="add" variant="link" compact onPress={onAddIntensifier} />}
         <Button label="Remove set" icon="trash-outline" variant="quiet" compact onPress={onRemove} />
       </View>
     </View>
