@@ -25,7 +25,8 @@
     "plugins": [
       "expo-router",
       "expo-sqlite",
-      "expo-font"
+      "expo-font",
+      "expo-sharing"
     ],
     "scheme": "wntracker",
     "extra": {

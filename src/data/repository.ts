@@ -11,7 +11,7 @@ import {
   type WorkoutProgress,
 } from '@/domain/progress';
 import { MAX_REST_SECONDS, MIN_REST_SECONDS } from '@/domain/restTimer';
-import { localDateString, type Unit } from '@/lib/format';
+import { localDateString, toDisplayWeight, type Unit } from '@/lib/format';
 import type { ThemeName } from '@/theme/palette';
 
 export type IntensifierType = 'drop' | 'partial' | 'superset';
@@ -1199,7 +1199,7 @@ async function completedWorkouts(db: SQLiteDatabase, dayId: string | null): Prom
 // ---------------------------------------------------------------------------
 // Settings
 
-export type DataSummary = { days: number; exercises: number; workouts: number; sets: number };
+export type DataSummary = { days: number; exercises: number; workouts: number; sets: number; lastBackup: string | null };
 
 /** What is stored on the phone, for the More screen. */
 export async function getDataSummary(db: SQLiteDatabase): Promise<DataSummary> {
@@ -1209,9 +1209,66 @@ export async function getDataSummary(db: SQLiteDatabase): Promise<DataSummary> {
        (SELECT COUNT(*) FROM day_basket) AS days,
        (SELECT COUNT(*) FROM exercise) AS exercises,
        (SELECT COUNT(*) FROM workout WHERE status = 'completed') AS workouts,
-       (SELECT COUNT(*) FROM workout_set s JOIN workout w ON w.id = s.workout_id WHERE w.status = 'completed' AND ${LOGGED}) AS sets`,
+       (SELECT COUNT(*) FROM workout_set s JOIN workout w ON w.id = s.workout_id WHERE w.status = 'completed' AND ${LOGGED}) AS sets,
+       (SELECT value FROM settings WHERE key = 'lastBackup') AS lastBackup`,
   );
-  return row ?? { days: 0, exercises: 0, workouts: 0, sets: 0 };
+  return row ?? { days: 0, exercises: 0, workouts: 0, sets: 0, lastBackup: null };
+}
+
+type ExportCell = string | number | null;
+
+/**
+ * The CSV export (SPEC.md 3.10): a header, then one row per logged set row
+ * (empty rows are skipped) of every finished workout, oldest first, in exercise and set order, each normal set
+ * followed by its intensifier rows. Weights are in the given unit.
+ */
+export async function getExportRows(db: SQLiteDatabase, unit: Unit): Promise<ExportCell[][]> {
+  const sets = await db.getAllAsync<{
+    id: string; workout_id: string; variation_id: string; date: string; day: string; exercise: string;
+    variation: string; note: string | null; is_warmup: number; reps: number | null; weight: number | null;
+  }>(
+    `SELECT s.id, s.workout_id, s.variation_id, w.date, d.name AS day, e.name AS exercise, v.name AS variation,
+            v.note, s.is_warmup, s.reps, s.weight
+     FROM workout_set s
+     JOIN workout w ON w.id = s.workout_id
+     JOIN day_basket d ON d.id = w.day_id
+     JOIN variation v ON v.id = s.variation_id
+     JOIN exercise e ON e.id = v.exercise_id
+     WHERE w.status = 'completed' AND s.intensifier_id IS NULL AND ${LOGGED}
+     ORDER BY w.started_at, e.position, v.created_at, s.is_warmup DESC, s.position`,
+  );
+  const rows = await db.getAllAsync<{
+    parent_set_id: string; type: IntensifierType; reps: number | null; weight: number | null;
+    exercise: string; variation: string; note: string | null;
+  }>(
+    `SELECT i.parent_set_id, i.type, s.reps, s.weight, e.name AS exercise, v.name AS variation, v.note
+     FROM intensifier i
+     JOIN workout_set s ON s.intensifier_id = i.id
+     JOIN variation v ON v.id = s.variation_id
+     JOIN exercise e ON e.id = v.exercise_id
+     JOIN workout w ON w.id = i.workout_id
+     WHERE w.status = 'completed' AND ${LOGGED}
+     ORDER BY i.position`,
+  );
+  const byParent = new Map<string, typeof rows>();
+  for (const r of rows) byParent.set(r.parent_set_id, [...(byParent.get(r.parent_set_id) ?? []), r]);
+  const weight = (kg: number | null) => (kg === null ? null : toDisplayWeight(kg, unit));
+  const out: ExportCell[][] = [['date', 'day', 'exercise', 'variation', 'set', 'type', 'reps', 'weight', 'unit', 'note']];
+  // Numbered within each workout and variation, warm-ups apart (W1, W2… then Set 1, Set 2…).
+  const counts = new Map<string, number>();
+  for (const s of sets) {
+    const key = `${s.workout_id}:${s.variation_id}:${s.is_warmup}`;
+    const n = (counts.get(key) ?? 0) + 1;
+    counts.set(key, n);
+    const setLabel = s.is_warmup ? `W${n}` : `Set ${n}`;
+    out.push([s.date, s.day, s.exercise, s.variation, setLabel, s.is_warmup ? 'warm-up' : 'working', s.reps, weight(s.weight), unit, s.note]);
+    for (const r of byParent.get(s.id) ?? []) {
+      // Partial reps have no weight of their own.
+      const w = r.type === 'partial' ? null : weight(r.weight);
+      out.push([s.date, s.day, r.exercise, r.variation, setLabel, r.type, r.reps, w, unit, r.note]);
+    }
+  }
+  return out;
 }
 
 export type StoredSettings = { theme: ThemeName | null; unit: Unit | null; restSeconds: number | null };
@@ -1229,7 +1286,11 @@ export async function getSettings(db: SQLiteDatabase): Promise<StoredSettings> {
   };
 }
 
-export async function saveSetting(db: SQLiteDatabase, key: 'theme' | 'unit' | 'restSeconds', value: string): Promise<void> {
+export async function saveSetting(
+  db: SQLiteDatabase,
+  key: 'theme' | 'unit' | 'restSeconds' | 'lastBackup',
+  value: string,
+): Promise<void> {
   await db.runAsync(
     'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
     key, value,
