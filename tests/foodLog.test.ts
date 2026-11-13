@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 
 import { addEntry, createFood, getFoodLog, listFoods, ValidationError } from '../src/data/repository.ts';
 import { initializeDatabase, SCHEMA_VERSION } from '../src/data/schema.ts';
+import { localDateString } from '../src/lib/format.ts';
 import { openTestDb, tick } from './testDb.ts';
 
 const yogurt = { name: 'Greek yogurt', kcal: 150, protein: 10, carbs: 12, fat: 5, servingGrams: 200 };
@@ -79,4 +80,18 @@ test('migrating a version 5 database adds My foods and keeps the workout data', 
   assert.equal((await db.getFirstAsync<{ name: string }>('SELECT name FROM day_basket'))!.name, 'Push');
   await createFood(db, yogurt);
   assert.equal((await listFoods(db, '')).length, 1);
+});
+
+test('an Entry saves to a past Date, but future Dates are view-only', async () => {
+  const db = await openTestDb();
+  const y = await createFood(db, yogurt);
+  const day = (offset: number) => {
+    const d = new Date();
+    return localDateString(new Date(d.getFullYear(), d.getMonth(), d.getDate() + offset));
+  };
+  await addEntry(db, { date: day(-3), meal: 'dinner', foodId: y, amount: 1, unit: 'serving' });
+  assert.equal((await getFoodLog(db, day(-3))).totals.kcal, 150);
+  assert.equal((await getFoodLog(db, day(0))).totals.kcal, 0);
+  await assert.rejects(addEntry(db, { date: day(1), meal: 'dinner', foodId: y, amount: 1, unit: 'serving' }), ValidationError);
+  assert.equal((await getFoodLog(db, day(1))).totals.kcal, 0);
 });
