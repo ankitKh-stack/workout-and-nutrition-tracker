@@ -1362,6 +1362,29 @@ export async function addEntry(db: SQLiteDatabase, e: NewEntry): Promise<string>
   return id;
 }
 
+/** An Entry as logged: the Food's name and per-Serving numbers copied at the time, plus the amount eaten. */
+export type Entry = { id: string; name: string; servingGrams: number | null; amount: number; unit: AmountUnit } & Numbers;
+
+export async function getEntry(db: SQLiteDatabase, entryId: string): Promise<Entry | null> {
+  return db.getFirstAsync<Entry>(
+    'SELECT id, name, kcal, protein, carbs, fat, serving_grams AS servingGrams, amount, unit FROM food_entry WHERE id = ?',
+    entryId,
+  );
+}
+
+/** Changes the amount eaten; the Entry's copied numbers stay, so the Food's later edits never reach it. */
+export async function updateEntry(db: SQLiteDatabase, entryId: string, amount: number, unit: AmountUnit): Promise<void> {
+  if (!(Number.isFinite(amount) && amount > 0)) throw new ValidationError('Enter an amount above 0.');
+  const entry = await getEntry(db, entryId);
+  if (!entry) throw new Error('Entry not found');
+  if (unit === 'gram' && entry.servingGrams === null) throw new ValidationError('This food has no Serving weight, so log it in Servings.');
+  await db.runAsync('UPDATE food_entry SET amount = ?, unit = ? WHERE id = ?', amount, unit, entryId);
+}
+
+export async function deleteEntry(db: SQLiteDatabase, entryId: string): Promise<void> {
+  await db.runAsync('DELETE FROM food_entry WHERE id = ?', entryId);
+}
+
 /** An Entry with the kcal and Macros of the amount eaten. */
 export type LoggedEntry = { id: string; name: string; amount: number; unit: AmountUnit } & Numbers;
 export type FoodLog = {

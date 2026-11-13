@@ -4,28 +4,41 @@ import { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 
 import { Button, Field, InlineError, Segmented } from '@/components/ui';
-import { addEntry, getFood, ValidationError, type Food } from '@/data/repository';
+import { addEntry, deleteEntry, getEntry, getFood, updateEntry, ValidationError, type Entry, type Food } from '@/data/repository';
 import { entryNumbers, type AmountUnit, type Meal } from '@/domain/nutrition';
+import { confirmAsync } from '@/lib/dialogs';
 import { parseWeight, whole } from '@/lib/format';
 import { useTheme } from '@/theme/settings';
 
 // The amount step (SPEC.md 3.9): Servings by default, grams when the Food has a
 // Serving weight, with a live preview of kcal and Macros before adding.
+// With an entryId it edits that Entry instead, using the numbers the Entry was logged with.
 export default function FoodAmountScreen() {
   const db = useSQLiteContext();
   const { styles } = useTheme();
-  const { date, meal, foodId } = useLocalSearchParams<{ date: string; meal: Meal; foodId: string }>();
-  const [food, setFood] = useState<Food | null>(null);
+  const { date, meal, foodId, entryId } = useLocalSearchParams<{ date: string; meal: Meal; foodId?: string; entryId?: string }>();
+  const [food, setFood] = useState<Food | Entry | null>(null);
   const [unit, setUnit] = useState<AmountUnit>('serving');
   const [text, setText] = useState('1');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    getFood(db, foodId)
-      .then((f) => (f ? setFood(f) : setError('This food no longer exists.')))
-      .catch(() => setError('Could not load this food.'));
-  }, [db, foodId]);
+    if (entryId) {
+      getEntry(db, entryId)
+        .then((e) => {
+          if (!e) return setError('This entry no longer exists.');
+          setFood(e);
+          setUnit(e.unit);
+          setText(String(e.amount));
+        })
+        .catch(() => setError('Could not load this entry.'));
+    } else {
+      getFood(db, foodId!)
+        .then((f) => (f ? setFood(f) : setError('This food no longer exists.')))
+        .catch(() => setError('Could not load this food.'));
+    }
+  }, [db, foodId, entryId]);
 
   const parsed = parseWeight(text);
   const amount = parsed.ok && parsed.value !== null && parsed.value > 0 ? parsed.value : null;
@@ -36,11 +49,28 @@ export default function FoodAmountScreen() {
     if (amount === null) return setError(parsed.ok ? 'Enter an amount above 0.' : parsed.message);
     setSaving(true);
     try {
-      await addEntry(db, { date, meal, foodId, amount, unit });
-      router.dismissAll();
+      if (entryId) {
+        await updateEntry(db, entryId, amount, unit);
+        router.back();
+      } else {
+        await addEntry(db, { date, meal, foodId: foodId!, amount, unit });
+        router.dismissAll();
+      }
     } catch (e) {
-      setError(e instanceof ValidationError ? e.message : 'Could not add. Try again.');
+      setError(e instanceof ValidationError ? e.message : entryId ? 'Could not save. Try again.' : 'Could not add. Try again.');
       setSaving(false);
+    }
+  }
+
+  async function remove() {
+    if (!food || saving) return;
+    const ok = await confirmAsync(`Delete '${food.name}'?`, 'This removes the entry and its calories from this date.', 'Delete', true);
+    if (!ok) return;
+    try {
+      await deleteEntry(db, entryId!);
+      router.back();
+    } catch {
+      setError('Could not delete. Nothing was removed.');
     }
   }
 
@@ -85,8 +115,11 @@ export default function FoodAmountScreen() {
       </Text>
       <View style={styles.buttonRow}>
         <Button label="Cancel" onPress={() => router.back()} style={{ flex: 1 }} />
-        <Button label="Add" variant="primary" onPress={add} disabled={!food || amount === null || saving} style={{ flex: 1 }} />
+        <Button label={entryId ? 'Save' : 'Add'} variant="primary" onPress={add} disabled={!food || amount === null || saving} style={{ flex: 1 }} />
       </View>
+      {entryId && food ? (
+        <Button label="Delete entry" icon="trash-outline" variant="link" style={{ alignItems: 'flex-start' }} onPress={remove} />
+      ) : null}
     </View>
   );
 }

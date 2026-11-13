@@ -68,6 +68,7 @@ export default function NutritionScreen() {
                       key={e.id}
                       title={e.name}
                       subtitle={formatAmount(e.amount, e.unit)}
+                      onPress={() => router.push({ pathname: '/food-amount', params: { entryId: e.id } })}
                       right={<Text style={[styles.body, styles.number, { color: colors.text }]}>{whole(e.kcal)} kcal</Text>}
                     />
                   ))}
