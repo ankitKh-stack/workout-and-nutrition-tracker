@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { addEntry, createFood, getFoodLog, listFoods, ValidationError } from '../src/data/repository.ts';
+import { addEntry, createFood, deleteEntry, getEntry, getFoodLog, listFoods, updateEntry, ValidationError } from '../src/data/repository.ts';
 import { initializeDatabase, SCHEMA_VERSION } from '../src/data/schema.ts';
 import { localDateString } from '../src/lib/format.ts';
 import { openTestDb, tick } from './testDb.ts';
@@ -94,4 +94,39 @@ test('an Entry saves to a past Date, but future Dates are view-only', async () =
   assert.equal((await getFoodLog(db, day(0))).totals.kcal, 0);
   await assert.rejects(addEntry(db, { date: day(1), meal: 'dinner', foodId: y, amount: 1, unit: 'serving' }), ValidationError);
   assert.equal((await getFoodLog(db, day(1))).totals.kcal, 0);
+});
+
+test("editing an Entry's amount uses the numbers it was logged with, even after the Food is changed or deleted", async () => {
+  const db = await openTestDb();
+  const y = await createFood(db, yogurt);
+  const id = await addEntry(db, { date: '2026-11-12', meal: 'breakfast', foodId: y, amount: 1, unit: 'serving' });
+  await db.runAsync("UPDATE food SET name = 'Skyr', kcal = 999, serving_grams = NULL");
+  assert.deepEqual(await getEntry(db, id), { id, name: 'Greek yogurt', kcal: 150, protein: 10, carbs: 12, fat: 5, servingGrams: 200, amount: 1, unit: 'serving' });
+
+  await updateEntry(db, id, 300, 'gram'); // the Entry's own 200 g Serving, not the Food's
+  let breakfast = (await getFoodLog(db, '2026-11-12')).meals[0];
+  assert.deepEqual(breakfast.entries.map((e) => [e.name, e.amount, e.unit, e.kcal]), [['Greek yogurt', 300, 'gram', 225]]);
+
+  await db.runAsync('DELETE FROM food');
+  await updateEntry(db, id, 2, 'serving');
+  breakfast = (await getFoodLog(db, '2026-11-12')).meals[0];
+  assert.deepEqual(breakfast.entries.map((e) => [e.name, e.kcal]), [['Greek yogurt', 300]]);
+  assert.deepEqual(breakfast.totals, { kcal: 300, protein: 20, carbs: 24, fat: 10 });
+});
+
+test('an edited amount must be above 0, in grams only with a Serving weight; a deleted Entry leaves the totals', async () => {
+  const db = await openTestDb();
+  const y = await createFood(db, yogurt);
+  const apple = await createFood(db, { name: 'Apple', kcal: 80, protein: 0, carbs: 20, fat: 0, servingGrams: null });
+  const ye = await addEntry(db, { date: '2026-11-12', meal: 'lunch', foodId: y, amount: 1, unit: 'serving' });
+  const ae = await addEntry(db, { date: '2026-11-12', meal: 'lunch', foodId: apple, amount: 1, unit: 'serving' });
+  await assert.rejects(updateEntry(db, ye, 0, 'serving'), ValidationError);
+  await assert.rejects(updateEntry(db, ae, 50, 'gram'), ValidationError);
+  assert.equal((await getFoodLog(db, '2026-11-12')).totals.kcal, 230);
+
+  await deleteEntry(db, ye);
+  assert.equal(await getEntry(db, ye), null);
+  const log = await getFoodLog(db, '2026-11-12');
+  assert.deepEqual(log.meals[1].entries.map((e) => e.name), ['Apple']);
+  assert.equal(log.totals.kcal, 80);
 });
