@@ -54,6 +54,9 @@ export function formatNumber(n: number): string {
   return `${rounded < 0 ? '−' : ''}${grouped}${frac ? `.${frac}` : ''}`;
 }
 
+/** kcal and Macros on screen: whole numbers, "1,360". */
+export const whole = (n: number) => formatNumber(Math.round(n));
+
 // Weights are always stored in kg; the chosen unit only affects what the user
 // sees and types. Storing one unit keeps volumes and percentage changes
 // comparable no matter when the unit was switched.

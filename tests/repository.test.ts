@@ -430,9 +430,9 @@ test('a v3 database gains notes and keeps its data', async () => {
   const db = await openTestDb();
   const { bench, workoutId, benchVar } = await specWorkout(db);
   await finishWorkout(db, workoutId);
-  await db.execAsync('ALTER TABLE variation DROP COLUMN note; ALTER TABLE workout_set DROP COLUMN is_warmup; PRAGMA user_version = 3;');
+  await db.execAsync('DROP TABLE food_entry; DROP TABLE food; ALTER TABLE variation DROP COLUMN note; ALTER TABLE workout_set DROP COLUMN is_warmup; PRAGMA user_version = 3;');
   await initializeDatabase(db);
-  assert.equal((await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version'))!.user_version, 5);
+  assert.equal((await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version'))!.user_version, SCHEMA_VERSION);
   assert.equal(await computeWorkoutVolume(db, workoutId), 1860);
   assert.equal((await getExerciseHistory(db, bench, null))!.note, null); // existing variations start with no note
   await setVariationNote(db, benchVar, 'notch 3');
@@ -595,9 +595,9 @@ test('a v4 database gains warm-ups with every old set a working set', async () =
   const db = await openTestDb();
   const { workoutId } = await specWorkout(db);
   await finishWorkout(db, workoutId);
-  await db.execAsync('ALTER TABLE workout_set DROP COLUMN is_warmup; PRAGMA user_version = 4;');
+  await db.execAsync('DROP TABLE food_entry; DROP TABLE food; ALTER TABLE workout_set DROP COLUMN is_warmup; PRAGMA user_version = 4;');
   await initializeDatabase(db);
-  assert.equal((await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version'))!.user_version, 5);
+  assert.equal((await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version'))!.user_version, SCHEMA_VERSION);
   assert.equal(await computeWorkoutVolume(db, workoutId), 1860);
 });
 

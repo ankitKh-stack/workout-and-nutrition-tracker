@@ -8,7 +8,7 @@ The prototype is finished when a person can: create and name a day, add exercise
 
 ## 1. Overview
 
-Workout and Nutrition Tracker is a phone app (Android and iPhone) for people who lift weights and want a simple, private log of their training. The user groups exercises into named "days" (for example "Push Day"), logs the sets, reps and weight they lift in each workout, marks harder techniques such as drop sets, partial reps and supersets, and swaps between variations of an exercise when the gym is busy or equipment is missing. A GitHub-style calendar shows each workout as a shaded square, darker when the workout's total lifted volume grew more compared with the previous workout of the same day. All data stays on the phone. Nutrition tracking is a later phase; this prototype contains only a placeholder screen for it.
+Workout and Nutrition Tracker is a phone app (Android and iPhone) for people who lift weights and want a simple, private log of their training. The user groups exercises into named "days" (for example "Push Day"), logs the sets, reps and weight they lift in each workout, marks harder techniques such as drop sets, partial reps and supersets, and swaps between variations of an exercise when the gym is busy or equipment is missing. A GitHub-style calendar shows each workout as a shaded square, darker when the workout's total lifted volume grew more compared with the previous workout of the same day. All data stays on the phone. The Nutrition tab logs the food eaten each day into four meals (3.9).
 
 ---
 
@@ -392,15 +392,25 @@ These terms are used throughout the spec. They are defined for a reader who has 
 
 ---
 
-### 3.9 Nutrition (placeholder)
+### 3.9 Nutrition (Food log)
 
-**Summary:** A single tab with a short message. Nutrition tracking comes in a later phase, after the workout prototype works.
+**Summary:** The Nutrition tab shows today's Food log: four Meals (Breakfast, Lunch, Dinner, Snacks) and plain totals for the Date. Foods come from My foods, a list on the phone that works offline; a Food not there yet is created by hand. Full design: [nutrition spec](docs/superpowers/specs/2026-11-13-nutrition-spec.md). This section grows as each build step lands.
 
-**What the user sees:** Title "Nutrition" and the text "Nutrition tracking is coming in a later version." No fields, controls or actions.
+**What the user sees:**
+- Title "Nutrition", then a card with the Date's totals: Calories (kcal), Protein, Carbs and Fat (g).
+- Four Meal sections, each with a header showing its kcal and a **+**, even when empty. Each Entry shows the food name, the amount ("1.5 servings" or "300 g") and its kcal.
+- **+** opens **Add food** for that Meal: a search box that filters My foods by name as you type (any case, offline), and **Create a food** at the bottom.
+- **Create a food:** name, then kcal, protein, carbs and fat per Serving (all required, 0 or more, up to 2 decimals) and an optional Serving weight in grams (above 0). The search text pre-fills the name. Saving puts the Food in My foods and opens the amount step.
+- **Amount step:** Servings by default (starting at 1); a Servings / Grams toggle when the Food has a Serving weight. A live line shows the kcal and Macros of the amount. **Add** logs the Entry into the Meal and returns to the Food log.
 
-**Empty and error states:** None; the screen has no data.
+**Rules:**
+- Energy is in kcal and weights in grams, whatever the kg/lb setting. kcal and Macros are shown as whole numbers; the stored values are not rounded.
+- The amount must be above 0. Grams are allowed only when the Food has a Serving weight; grams ÷ Serving weight = Servings.
+- An Entry copies the Food's name, per-Serving numbers and Serving weight when it is logged, so a later change to the Food never changes a past Date.
 
-**Technical:** A static screen with no storage access.
+**Error state:** Storage read fails: "Could not load the food log." with "Try again". Validation messages appear under the form.
+
+**Technical:** Tables `food` and `food_entry` (schema version 6). Maths in `src/domain/nutrition.ts`; reads and writes through `src/data/repository.ts`.
 
 ---
 
@@ -719,7 +729,7 @@ The prototype must not include the following. Each is excluded for the reason gi
 
 | Excluded | Reason |
 |---|---|
-| Any nutrition feature beyond the single placeholder screen (food logging, calories, macros, targets) | Nutrition is a later phase, to be discussed after the workout prototype works. |
+| Nutrition beyond the Food log in 3.9 (Targets, other Dates, editing or deleting Entries, managing My foods, Open Food Facts search, barcode scan) | Built in later steps of the [nutrition spec](docs/superpowers/specs/2026-11-13-nutrition-spec.md). |
 | Backend services, servers, cloud sync or a built cloud backup | Data lives on the phone for the prototype; section 6 only describes where a backup would fit later. |
 | User accounts, login, sign-up, passwords | Not needed for on-device data and adds work that does not prove the workout loop. |
 | Billing, subscriptions, payments, ads | Not part of proving the prototype. |
