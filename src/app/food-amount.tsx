@@ -22,7 +22,9 @@ export default function FoodAmountScreen() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    getFood(db, foodId).then(setFood);
+    getFood(db, foodId)
+      .then((f) => (f ? setFood(f) : setError('This food no longer exists.')))
+      .catch(() => setError('Could not load this food.'));
   }, [db, foodId]);
 
   const parsed = parseWeight(text);

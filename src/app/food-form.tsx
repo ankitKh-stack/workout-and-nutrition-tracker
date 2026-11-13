@@ -5,7 +5,7 @@ import { Text, View } from 'react-native';
 
 import { KeyboardAwareScroll } from '@/components/KeyboardAwareScroll';
 import { Button, Field, InlineError } from '@/components/ui';
-import { createFood, ValidationError } from '@/data/repository';
+import { createFood, ValidationError, type FoodInput } from '@/data/repository';
 import { parseWeight } from '@/lib/format';
 import { useTheme } from '@/theme/settings';
 
@@ -40,7 +40,7 @@ export default function FoodFormScreen() {
     }
     setSaving(true);
     try {
-      const foodId = await createFood(db, { name, ...values } as Parameters<typeof createFood>[1]);
+      const foodId = await createFood(db, { name, ...(values as Omit<FoodInput, 'name'>) });
       router.replace({ pathname: '/food-amount', params: { date: params.date, meal: params.meal, foodId } });
     } catch (e) {
       setError(e instanceof ValidationError ? e.message : 'Could not save. Try again.');
