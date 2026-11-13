@@ -1349,6 +1349,7 @@ export type NewEntry = { date: string; meal: Meal; foodId: string; amount: numbe
 /** Logs a Food into a Meal of a Date, copying its name and numbers so later edits to the Food leave this Entry as it was. */
 export async function addEntry(db: SQLiteDatabase, e: NewEntry): Promise<string> {
   if (!(Number.isFinite(e.amount) && e.amount > 0)) throw new ValidationError('Enter an amount above 0.');
+  if (e.date > localDateString(new Date())) throw new ValidationError('Future Dates can be viewed but not logged into.');
   const food = await getFood(db, e.foodId);
   if (!food) throw new Error('Food not found');
   if (e.unit === 'gram' && food.servingGrams === null) throw new ValidationError('This food has no Serving weight, so log it in Servings.');
