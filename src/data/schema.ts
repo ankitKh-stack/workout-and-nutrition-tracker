@@ -1,7 +1,18 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 export const DATABASE_NAME = 'workout-tracker.db';
-const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 5;
+
+/**
+ * Why a database file can't be restored, or null when it can: it must have this
+ * app's tables and not come from a newer version. Older ones are upgraded by
+ * initializeDatabase after the restore.
+ */
+export function backupProblem(userVersion: number, tables: string[]): string | null {
+  if (!tables.includes('day_basket') || !tables.includes('workout_set')) return "This file isn't a backup from this app.";
+  if (userVersion > SCHEMA_VERSION) return 'This backup is from a newer version of the app. Update the app first.';
+  return null;
+}
 
 /**
  * Creates the tables on first launch and records the schema version so later

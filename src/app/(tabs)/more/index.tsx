@@ -1,11 +1,14 @@
 import { router } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { ScrollView, Text, View } from 'react-native';
+import { useRef, useState } from 'react';
+import { Platform, ScrollView, Text, View } from 'react-native';
 
-import { Button, Chevron, ListRow, PageHeader, Segmented } from '@/components/ui';
+import { Button, Chevron, InlineError, ListRow, PageHeader, Segmented } from '@/components/ui';
 import { getDataSummary } from '@/data/repository';
 import { formatClock, MAX_REST_SECONDS, MIN_REST_SECONDS, stepRest } from '@/domain/restTimer';
-import { formatNumber, formatWeight } from '@/lib/format';
+import { backUp, exportCsv, pickBackup, restoreFrom } from '@/lib/backup';
+import { confirmAsync } from '@/lib/dialogs';
+import { formatDateLong, formatNumber, formatWeight, localDateString } from '@/lib/format';
 import { useRestTimer } from '@/lib/restTimer';
 import { useFocusData } from '@/lib/useFocusData';
 import { useSettings, useTheme } from '@/theme/settings';
@@ -15,9 +18,61 @@ import { useSettings, useTheme } from '@/theme/settings';
 export default function MoreScreen() {
   const db = useSQLiteContext();
   const { styles, colors } = useTheme();
-  const { theme, setTheme, unit, setUnit, restSeconds, setRestSeconds } = useSettings();
-  const { data: summary } = useFocusData(() => getDataSummary(db), [db]);
-  const { alertsAllowed } = useRestTimer();
+  const { theme, setTheme, unit, setUnit, restSeconds, setRestSeconds, reloadSettings } = useSettings();
+  const { data: summary, reload } = useFocusData(() => getDataSummary(db), [db]);
+  const rest = useRestTimer();
+  const { alertsAllowed } = rest;
+  const [dataError, setDataError] = useState<string | null>(null);
+  // One backup, export or restore at a time: the ref stops a fast second tap, the state greys the buttons.
+  const busy = useRef(false);
+  const [working, setWorking] = useState(false);
+
+  async function guarded(action: () => Promise<void>, failure: string) {
+    if (busy.current) return;
+    busy.current = true;
+    setWorking(true);
+    setDataError(null);
+    try {
+      await action();
+    } catch (e) {
+      console.warn(e);
+      setDataError(failure);
+    }
+    busy.current = false;
+    setWorking(false);
+  }
+
+  const onBackUp = () =>
+    guarded(async () => {
+      await backUp(db);
+      await reload();
+    }, 'Could not back up. Try again.');
+
+  const onExport = () => guarded(() => exportCsv(db, unit), 'Could not export. Try again.');
+
+  const onRestore = () =>
+    guarded(async () => {
+      const picked = await pickBackup();
+      if (!picked) return;
+      if ('problem' in picked) return setDataError(picked.problem);
+      const when = picked.backupDate ? formatDateLong(localDateString(new Date(picked.backupDate))) : 'an unknown date';
+      const ok = await confirmAsync(
+        'Restore from backup?',
+        `Replace everything on this phone with the backup from ${when}? This includes any workout in progress and can't be undone.`,
+        'Restore',
+        true,
+      );
+      if (!ok) {
+        await picked.backup.closeAsync();
+        return;
+      }
+      await restoreFrom(picked.backup, db);
+      await reloadSettings();
+      // Whatever was running belongs to data that is gone now.
+      rest.skip();
+      rest.dismiss();
+      router.replace('/workouts');
+    }, 'Could not restore. Nothing was changed.');
 
   const stat = (label: string, value: number | undefined) => (
     <View style={{ flex: 1, gap: 2 }}>
@@ -118,6 +173,23 @@ export default function MoreScreen() {
             {stat('Sets logged', summary?.sets)}
           </View>
           <Text style={styles.small}>Stored only on this phone. Nothing is uploaded.</Text>
+          {Platform.OS === 'web' ? (
+            <Text style={styles.small}>Backup and export work in the phone app.</Text>
+          ) : (
+            <>
+              <Text style={styles.small}>
+                {summary?.lastBackup
+                  ? `Last backup ${formatDateLong(localDateString(new Date(summary.lastBackup)))}`
+                  : 'No backup yet'}
+              </Text>
+              <View style={styles.buttonRow}>
+                <Button label="Back up" icon="cloud-upload-outline" onPress={onBackUp} disabled={working} style={{ flex: 1 }} />
+                <Button label="Export CSV" icon="document-text-outline" onPress={onExport} disabled={working} style={{ flex: 1 }} />
+              </View>
+              <Button label="Restore from backup" icon="refresh" variant="link" onPress={onRestore} disabled={working} />
+              {dataError ? <InlineError>{dataError}</InlineError> : null}
+            </>
+          )}
         </View>
       </ScrollView>
     </View>

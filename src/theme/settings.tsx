@@ -16,6 +16,8 @@ type SettingsValue = {
   setTheme: (theme: ThemeName) => void;
   setUnit: (unit: Unit) => void;
   setRestSeconds: (seconds: number) => void;
+  /** Reads the settings again, e.g. after a backup was restored. */
+  reloadSettings: () => Promise<void>;
 };
 
 const SettingsContext = createContext<SettingsValue | null>(null);
@@ -32,16 +34,18 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [unit, setUnitState] = useState<Unit>('kg');
   const [restSeconds, setRestState] = useState(DEFAULT_REST_SECONDS);
 
+  const reloadSettings = useCallback(async () => {
+    const s = await getSettings(db);
+    setThemeState(s.theme ?? (Appearance.getColorScheme() === 'dark' ? 'dark' : 'light'));
+    setUnitState(s.unit ?? 'kg');
+    setRestState(s.restSeconds ?? DEFAULT_REST_SECONDS);
+  }, [db]);
+
   useEffect(() => {
-    getSettings(db)
-      .then((s) => {
-        if (s.theme) setThemeState(s.theme);
-        if (s.unit) setUnitState(s.unit);
-        if (s.restSeconds) setRestState(s.restSeconds);
-      })
+    reloadSettings()
       .catch((e) => console.warn(e))
       .finally(() => setLoaded(true));
-  }, [db]);
+  }, [reloadSettings]);
 
   const setTheme = useCallback(
     (t: ThemeName) => {
@@ -67,8 +71,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ theme, unit, restSeconds, setTheme, setUnit, setRestSeconds }),
-    [theme, unit, restSeconds, setTheme, setUnit, setRestSeconds],
+    () => ({ theme, unit, restSeconds, setTheme, setUnit, setRestSeconds, reloadSettings }),
+    [theme, unit, restSeconds, setTheme, setUnit, setRestSeconds, reloadSettings],
   );
   if (!loaded) return null;
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;

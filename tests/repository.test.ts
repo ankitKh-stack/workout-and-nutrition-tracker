@@ -20,6 +20,7 @@ import {
   getDayDetail,
   getExerciseDeletionCounts,
   getExerciseHistory,
+  getExportRows,
   getSettings,
   getLoggingData,
   getWorkoutDetail,
@@ -37,7 +38,7 @@ import {
   updateSetField,
   ValidationError,
 } from '../src/data/repository.ts';
-import { initializeDatabase } from '../src/data/schema.ts';
+import { backupProblem, initializeDatabase, SCHEMA_VERSION } from '../src/data/schema.ts';
 import { openTestDb, tick } from './testDb.ts';
 
 const dayOrder = async (db: SQLiteDatabase) => (await listDays(db)).map((d) => d.name);
@@ -215,7 +216,7 @@ test('deleting a day removes everything that belonged to it', async () => {
   const { dayId, workoutId } = await specWorkout(db);
   await finishWorkout(db, workoutId);
   await deleteDay(db, dayId);
-  assert.deepEqual(await getDataSummary(db), { days: 0, exercises: 0, workouts: 0, sets: 0 });
+  assert.deepEqual(await getDataSummary(db), { days: 0, exercises: 0, workouts: 0, sets: 0, lastBackup: null });
   // No orphaned rows left in any table.
   for (const table of ['exercise', 'variation', 'workout', 'workout_set', 'intensifier']) {
     assert.deepEqual(await db.getFirstAsync(`SELECT COUNT(*) AS n FROM ${table}`), { n: 0 }, table);
@@ -608,4 +609,34 @@ test('a warm-up set cannot take an intensifier', async () => {
   const v = (await getLoggingData(db, w, bench))!.selectedVariationId;
   const wu = await addSet(db, w, v, true);
   await assert.rejects(addIntensifier(db, wu, 'drop'), ValidationError);
+});
+
+test('a backup must come from this app and not from a newer version', () => {
+  const tables = ['day_basket', 'exercise', 'variation', 'workout', 'workout_set', 'intensifier', 'settings'];
+  assert.equal(backupProblem(SCHEMA_VERSION, ['photos']), "This file isn't a backup from this app.");
+  assert.equal(backupProblem(SCHEMA_VERSION + 1, tables), 'This backup is from a newer version of the app. Update the app first.');
+  assert.equal(backupProblem(SCHEMA_VERSION, tables), null);
+  assert.equal(backupProblem(3, tables), null); // older backups are upgraded on restore
+});
+
+test('the CSV export has one row per set row of finished workouts', async () => {
+  const db = await openTestDb();
+  const { workoutId, dayId, benchVar } = await specWorkout(db);
+  const wu = await addSet(db, workoutId, benchVar, true);
+  await updateSetField(db, wu, 'reps', 10);
+  await updateSetField(db, wu, 'weight', 20);
+  await addSet(db, workoutId, benchVar); // left empty: not exported and takes no number
+  await finishWorkout(db, workoutId);
+  await startWorkout(db, dayId); // in progress: not exported
+  const rows = await getExportRows(db, 'kg');
+  const date = rows[1][0];
+  assert.deepEqual(rows[0], ['date', 'day', 'exercise', 'variation', 'set', 'type', 'reps', 'weight', 'unit', 'note']);
+  assert.deepEqual(rows.slice(1), [
+    [date, 'Push', 'Bench', 'Bench', 'W1', 'warm-up', 10, 20, 'kg', null],
+    [date, 'Push', 'Bench', 'Bench', 'Set 1', 'working', 10, 60, 'kg', null],
+    [date, 'Push', 'Bench', 'Bench', 'Set 2', 'working', 8, 60, 'kg', null],
+    [date, 'Push', 'Bench', 'Bench', 'Set 2', 'drop', 6, 40, 'kg', null],
+    [date, 'Push', 'Bench', 'Bench', 'Set 2', 'partial', 4, null, 'kg', null],
+    [date, 'Push', 'Curl', 'Curl', 'Set 2', 'superset', 12, 25, 'kg', null],
+  ]);
 });
