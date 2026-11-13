@@ -1,7 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 export const DATABASE_NAME = 'workout-tracker.db';
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 /**
  * Why a database file can't be restored, or null when it can: it must have this
@@ -115,6 +115,41 @@ export async function initializeDatabase(db: SQLiteDatabase): Promise<void> {
     if (version.user_version < 5) {
       // Warm-up sets: left out of volume and records. Existing sets are working sets.
       await db.execAsync('ALTER TABLE workout_set ADD COLUMN is_warmup INTEGER NOT NULL DEFAULT 0;');
+    }
+    if (version.user_version < 6) {
+      // Nutrition: My foods, and Entries that copy the Food's name and numbers
+      // when logged, so editing or deleting a Food never changes a past Date.
+      await db.execAsync(`
+        CREATE TABLE food (
+          id TEXT PRIMARY KEY NOT NULL,
+          name TEXT NOT NULL,
+          kcal REAL NOT NULL,
+          protein REAL NOT NULL,
+          carbs REAL NOT NULL,
+          fat REAL NOT NULL,
+          serving_grams REAL,
+          barcode TEXT UNIQUE,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE food_entry (
+          id TEXT PRIMARY KEY NOT NULL,
+          date TEXT NOT NULL,
+          meal TEXT NOT NULL CHECK (meal IN ('breakfast', 'lunch', 'dinner', 'snacks')),
+          food_id TEXT REFERENCES food(id) ON DELETE SET NULL,
+          name TEXT NOT NULL,
+          kcal REAL NOT NULL,
+          protein REAL NOT NULL,
+          carbs REAL NOT NULL,
+          fat REAL NOT NULL,
+          serving_grams REAL,
+          amount REAL NOT NULL,
+          unit TEXT NOT NULL CHECK (unit IN ('serving', 'gram')),
+          created_at TEXT NOT NULL
+        );
+        CREATE INDEX idx_food_entry_date ON food_entry(date);
+        CREATE INDEX idx_food_entry_food ON food_entry(food_id);
+      `);
     }
     await db.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
   });

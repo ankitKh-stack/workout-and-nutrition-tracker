@@ -10,6 +10,7 @@ import {
   type VolumeSetInput,
   type WorkoutProgress,
 } from '@/domain/progress';
+import { entryNumbers, MEALS, sumNumbers, type AmountUnit, type Meal, type Numbers } from '@/domain/nutrition';
 import { MAX_REST_SECONDS, MIN_REST_SECONDS } from '@/domain/restTimer';
 import { localDateString, toDisplayWeight, type Unit } from '@/lib/format';
 import type { ThemeName } from '@/theme/palette';
@@ -1295,4 +1296,90 @@ export async function saveSetting(
     'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
     key, value,
   );
+}
+
+// ---------------------------------------------------------------------------
+// Nutrition: My foods
+
+/** A Food's nutrition is per Serving; servingGrams is the Serving's weight when known. */
+export type Food = { id: string; name: string; servingGrams: number | null } & Numbers;
+export type FoodInput = Omit<Food, 'id'>;
+
+const FOOD_COLUMNS = 'id, name, kcal, protein, carbs, fat, serving_grams AS servingGrams';
+
+function validateFood(f: FoodInput) {
+  if (f.name.trim() === '') throw new ValidationError('Enter a name.');
+  for (const key of ['kcal', 'protein', 'carbs', 'fat'] as const) {
+    if (!Number.isFinite(f[key]) || f[key] < 0) throw new ValidationError('Enter kcal, protein, carbs and fat, each 0 or more.');
+  }
+  if (f.servingGrams !== null && !(Number.isFinite(f.servingGrams) && f.servingGrams > 0)) {
+    throw new ValidationError('Serving weight must be more than 0 g, or left blank.');
+  }
+}
+
+export async function createFood(db: SQLiteDatabase, f: FoodInput): Promise<string> {
+  validateFood(f);
+  const id = randomUUID();
+  const t = now();
+  await db.runAsync(
+    `INSERT INTO food (id, name, kcal, protein, carbs, fat, serving_grams, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    id, f.name.trim(), f.kcal, f.protein, f.carbs, f.fat, f.servingGrams, t, t,
+  );
+  return id;
+}
+
+/** My foods A–Z, keeping those whose name contains the filter (any case). */
+export async function listFoods(db: SQLiteDatabase, filter: string): Promise<Food[]> {
+  return db.getAllAsync<Food>(
+    `SELECT ${FOOD_COLUMNS} FROM food WHERE instr(lower(name), lower(?)) > 0 ORDER BY lower(name)`,
+    filter.trim(),
+  );
+}
+
+export async function getFood(db: SQLiteDatabase, foodId: string): Promise<Food | null> {
+  return db.getFirstAsync<Food>(`SELECT ${FOOD_COLUMNS} FROM food WHERE id = ?`, foodId);
+}
+
+// ---------------------------------------------------------------------------
+// Nutrition: Entries and the Food log
+
+export type NewEntry = { date: string; meal: Meal; foodId: string; amount: number; unit: AmountUnit };
+
+/** Logs a Food into a Meal of a Date, copying its name and numbers so later edits to the Food leave this Entry as it was. */
+export async function addEntry(db: SQLiteDatabase, e: NewEntry): Promise<string> {
+  if (!(Number.isFinite(e.amount) && e.amount > 0)) throw new ValidationError('Enter an amount above 0.');
+  const food = await getFood(db, e.foodId);
+  if (!food) throw new Error('Food not found');
+  if (e.unit === 'gram' && food.servingGrams === null) throw new ValidationError('This food has no Serving weight, so log it in Servings.');
+  const id = randomUUID();
+  await db.runAsync(
+    `INSERT INTO food_entry (id, date, meal, food_id, name, kcal, protein, carbs, fat, serving_grams, amount, unit, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    id, e.date, e.meal, food.id, food.name, food.kcal, food.protein, food.carbs, food.fat, food.servingGrams, e.amount, e.unit, now(),
+  );
+  return id;
+}
+
+/** An Entry with the kcal and Macros of the amount eaten. */
+export type LoggedEntry = { id: string; name: string; amount: number; unit: AmountUnit } & Numbers;
+export type FoodLog = {
+  meals: { meal: Meal; entries: LoggedEntry[]; totals: Numbers }[];
+  totals: Numbers;
+};
+
+export async function getFoodLog(db: SQLiteDatabase, date: string): Promise<FoodLog> {
+  const rows = await db.getAllAsync<
+    { id: string; meal: Meal; name: string; servingGrams: number | null; amount: number; unit: AmountUnit } & Numbers
+  >(
+    `SELECT id, meal, name, kcal, protein, carbs, fat, serving_grams AS servingGrams, amount, unit
+     FROM food_entry WHERE date = ? ORDER BY created_at, rowid`,
+    date,
+  );
+  const entries = rows.map((r) => ({ meal: r.meal, id: r.id, name: r.name, amount: r.amount, unit: r.unit, ...entryNumbers(r, r.amount, r.unit, r.servingGrams) }));
+  const meals = MEALS.map(({ meal }) => {
+    const mine = entries.filter((e) => e.meal === meal).map(({ meal: _, ...e }) => e);
+    return { meal, entries: mine, totals: sumNumbers(mine) };
+  });
+  return { meals, totals: sumNumbers(entries) };
 }
