@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 
 import { toDraftFood } from '../src/domain/openFoodFacts.ts';
 
-const sample = (name: string) => JSON.parse(readFileSync(new URL(`./fixtures/off-${name}.json`, import.meta.url), 'utf8'));
+const sample = (name: string) => JSON.parse(readFileSync(new URL(`./fixtures/open-food-facts-${name}.json`, import.meta.url), 'utf8'));
 
 test('a product with a serving size in grams gets per-Serving numbers for that serving', () => {
   assert.deepEqual(toDraftFood(sample('with-serving')), {

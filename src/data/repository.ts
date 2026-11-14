@@ -1402,6 +1402,14 @@ export async function addEntry(db: SQLiteDatabase, e: NewEntry): Promise<string>
   return id;
 }
 
+/** Saves a new Food to My foods and logs it in one go (an Open Food Facts pick); a failed Entry leaves no Food behind. */
+export async function addEntryWithNewFood(db: SQLiteDatabase, f: FoodInput, e: Omit<NewEntry, 'foodId'>): Promise<void> {
+  await db.withTransactionAsync(async () => {
+    const foodId = await createFood(db, f);
+    await addEntry(db, { ...e, foodId });
+  });
+}
+
 /** An Entry as logged: the Food's name and per-Serving numbers copied at the time, plus the amount eaten. */
 export type Entry = { id: string; name: string; servingGrams: number | null; amount: number; unit: AmountUnit } & Numbers;
 

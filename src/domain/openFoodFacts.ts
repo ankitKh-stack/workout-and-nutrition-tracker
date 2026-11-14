@@ -2,7 +2,7 @@
 // tested against saved product JSON; the network client is src/lib/openFoodFacts.ts.
 
 /** The product fields asked for in a search (`fields=`). Open Food Facts is crowd-sourced, so any can be missing. */
-export type OffProduct = {
+export type OpenFoodFactsProduct = {
   code?: string;
   product_name?: string;
   brands?: string;
@@ -35,7 +35,7 @@ function number(v: unknown): number | null {
 }
 
 /** Nutrition per 100 g becomes per Serving when the product gives a serving size in grams; otherwise the Serving is 100 g. */
-export function toDraftFood(p: OffProduct): DraftFood {
+export function toDraftFood(p: OpenFoodFactsProduct): DraftFood {
   const quantity = number(p.serving_quantity);
   const servingGrams = p.serving_quantity_unit === 'g' && quantity ? quantity : null;
   const scale = (servingGrams ?? 100) / 100;

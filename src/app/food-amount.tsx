@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 
 import { Button, Field, InlineError, Segmented } from '@/components/ui';
-import { addEntry, createFood, deleteEntry, getEntry, getFood, updateEntry, ValidationError, type Entry, type Food, type FoodInput } from '@/data/repository';
+import { addEntry, addEntryWithNewFood, deleteEntry, getEntry, getFood, updateEntry, ValidationError, type Entry, type Food, type FoodInput } from '@/data/repository';
 import { entryNumbers, type AmountUnit, type Meal } from '@/domain/nutrition';
 import { confirmAsync } from '@/lib/dialogs';
 import { parseWeight, whole } from '@/lib/format';
@@ -35,7 +35,11 @@ export default function FoodAmountScreen() {
         })
         .catch(() => setError('Could not load this entry.'));
     } else if (draft) {
-      setFood({ id: '', ...(JSON.parse(draft) as FoodInput) });
+      try {
+        setFood({ id: '', ...(JSON.parse(draft) as FoodInput) });
+      } catch {
+        setError('Could not load this food.');
+      }
     } else {
       getFood(db, foodId!)
         .then((f) => (f ? setFood(f) : setError('This food no longer exists.')))
@@ -56,12 +60,8 @@ export default function FoodAmountScreen() {
         await updateEntry(db, entryId, amount, unit);
         router.back();
       } else if (draft) {
-        const { name, kcal, protein, carbs, fat, servingGrams, barcode } = JSON.parse(draft) as FoodInput;
-        // One transaction, so a failed Entry leaves no half-saved Food behind.
-        await db.withTransactionAsync(async () => {
-          const id = await createFood(db, { name, kcal, protein, carbs, fat, servingGrams, barcode });
-          await addEntry(db, { date, meal, foodId: id, amount, unit });
-        });
+        const { name, kcal, protein, carbs, fat, servingGrams, barcode } = food as Food & FoodInput;
+        await addEntryWithNewFood(db, { name, kcal, protein, carbs, fat, servingGrams, barcode }, { date, meal, amount, unit });
         router.dismissAll();
       } else {
         await addEntry(db, { date, meal, foodId: foodId!, amount, unit });

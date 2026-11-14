@@ -11,7 +11,7 @@ import { NOT_ANSWERING, OpenFoodFactsError, searchOpenFoodFacts } from '@/lib/op
 import { useFocusData } from '@/lib/useFocusData';
 import { useTheme } from '@/theme/settings';
 
-type Online =
+type OnlineSearch =
   | { query: string; status: 'loading' }
   | { query: string; status: 'done'; results: DraftFood[] }
   | { query: string; status: 'error'; message: string };
@@ -25,7 +25,7 @@ export default function AddFoodScreen() {
   const { date, meal } = useLocalSearchParams<{ date: string; meal: string }>();
   const [query, setQuery] = useState('');
   const { data: foods } = useFocusData(() => listFoods(db, query), [db, query]);
-  const [online, setOnline] = useState<Online | null>(null);
+  const [online, setOnline] = useState<OnlineSearch | null>(null);
   const term = query.trim();
   const shown = online?.query === term ? online : null; // results belong to the text they were searched for
 
@@ -82,8 +82,8 @@ export default function AddFoodScreen() {
           <ListRow
             title={`Search Open Food Facts for '${term}'`}
             onPress={searchOnline}
-            disabled={shown?.status === 'loading'}
-            right={shown?.status === 'loading' ? <ActivityIndicator color={colors.accent} /> : <Chevron />}
+            disabled={online?.status === 'loading'}
+            right={online?.status === 'loading' ? <ActivityIndicator color={colors.accent} /> : <Chevron />}
           />
           {shown?.status === 'error' ? <InlineError>{shown.message}</InlineError> : null}
           {shown?.status === 'done' && shown.results.length === 0 ? <EmptyText>Open Food Facts has no match.</EmptyText> : null}
@@ -91,7 +91,7 @@ export default function AddFoodScreen() {
             ? shown.results.map((d, i) => (
                 <ListRow
                   key={`${d.barcode ?? ''}-${i}`}
-                  title={d.name || 'Unnamed product'}
+                  title={d.name || 'Unnamed food'}
                   subtitle={[
                     d.brand,
                     d.missing.length ? 'Some numbers missing' : `${whole(d.kcal!)} kcal per Serving (${whole(d.servingGrams!)} g)`,
