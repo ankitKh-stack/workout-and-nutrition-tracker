@@ -1289,13 +1289,48 @@ export async function getSettings(db: SQLiteDatabase): Promise<StoredSettings> {
 
 export async function saveSetting(
   db: SQLiteDatabase,
-  key: 'theme' | 'unit' | 'restSeconds' | 'lastBackup',
+  key: 'theme' | 'unit' | 'restSeconds' | 'lastBackup' | (typeof TARGET_KEYS)[keyof Numbers],
   value: string,
 ): Promise<void> {
   await db.runAsync(
     'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
     key, value,
   );
+}
+
+/** The daily Targets, the same on every Date; null is a blank Target (a missing settings key). */
+export type Targets = { [K in keyof Numbers]: number | null };
+const TARGET_KEYS = { kcal: 'targetKcal', protein: 'targetProtein', carbs: 'targetCarbs', fat: 'targetFat' } as const;
+const NUTRIENTS = Object.keys(TARGET_KEYS) as (keyof Numbers)[];
+const isTarget = (v: number) => Number.isFinite(v) && v > 0;
+
+export async function getTargets(db: SQLiteDatabase): Promise<Targets> {
+  const keys = Object.values(TARGET_KEYS);
+  const rows = await db.getAllAsync<{ key: string; value: string }>(
+    `SELECT key, value FROM settings WHERE key IN (${keys.map(() => '?').join(', ')})`,
+    ...keys,
+  );
+  const map = new Map(rows.map((r) => [r.key, Number(r.value)]));
+  const targets = {} as Targets;
+  for (const n of NUTRIENTS) {
+    const v = map.get(TARGET_KEYS[n]);
+    targets[n] = v !== undefined && isTarget(v) ? v : null;
+  }
+  return targets;
+}
+
+export async function saveTargets(db: SQLiteDatabase, targets: Targets): Promise<void> {
+  for (const n of NUTRIENTS) {
+    const v = targets[n];
+    if (v !== null && !isTarget(v)) throw new ValidationError('Targets must be numbers above 0.');
+  }
+  await db.withTransactionAsync(async () => {
+    for (const n of NUTRIENTS) {
+      const v = targets[n];
+      if (v === null) await db.runAsync('DELETE FROM settings WHERE key = ?', TARGET_KEYS[n]);
+      else await saveSetting(db, TARGET_KEYS[n], String(v));
+    }
+  });
 }
 
 // ---------------------------------------------------------------------------

@@ -31,3 +31,17 @@ export function sumNumbers(list: Numbers[]): Numbers {
     { kcal: 0, protein: 0, carbs: 0, fat: 0 },
   );
 }
+
+export type TargetProgress = { eaten: number; target: number; left: number; over: number; fraction: number };
+
+/** Progress against a Target (always > 0); a blank Target has none. The bar fraction stops at 1. */
+export function targetProgress(eaten: number, target: number | null): TargetProgress | null {
+  if (target === null) return null;
+  return {
+    eaten,
+    target,
+    left: Math.max(target - eaten, 0),
+    over: Math.max(eaten - target, 0),
+    fraction: Math.min(eaten / target, 1),
+  };
+}
