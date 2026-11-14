@@ -15,7 +15,7 @@ import { useRestTimer } from '@/lib/restTimer';
 import { useFocusData } from '@/lib/useFocusData';
 import { useSettings, useTheme } from '@/theme/settings';
 
-// More: the link to History (3.12), daily nutrition Targets, settings for theme and weight unit (both
+// More: the link to History (3.12), daily nutrition Targets and My foods, settings for theme and weight unit (both
 // apply immediately and are saved), and what is stored on this phone.
 export default function MoreScreen() {
   const db = useSQLiteContext();
@@ -95,6 +95,7 @@ export default function MoreScreen() {
         />
         <Text style={styles.sectionTitle}>Targets</Text>
         <TargetsCard />
+        <ListRow title="My foods" subtitle="Edit or delete your saved foods" right={<Chevron />} onPress={() => router.push('/more/foods')} />
 
         <Text style={styles.sectionTitle}>Appearance</Text>
         <View style={styles.card}>

@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { addEntry, addEntryWithNewFood, createFood, deleteEntry, findFoodByBarcode, getEntry, getFoodLog, getTargets, listFoods, saveTargets, updateEntry, ValidationError } from '../src/data/repository.ts';
+import { addEntry, addEntryWithNewFood, createFood, deleteEntry, deleteFood, getFood, updateFood, findFoodByBarcode, getEntry, getFoodLog, getTargets, listFoods, saveTargets, updateEntry, ValidationError } from '../src/data/repository.ts';
 import { initializeDatabase, SCHEMA_VERSION } from '../src/data/schema.ts';
 import { localDateString } from '../src/lib/format.ts';
 import { openTestDb, tick } from './testDb.ts';
@@ -45,6 +45,29 @@ test('an Entry from a new Food saves the Food to My foods; a failed Entry saves 
 
   await assert.rejects(addEntryWithNewFood(db, { ...yogurt, name: 'Skyr', barcode: '42' }, { ...entry, amount: 0 }), ValidationError);
   assert.equal(await findFoodByBarcode(db, '42'), null);
+});
+
+test('editing a Food updates My foods, validated like a new one', async () => {
+  const db = await openTestDb();
+  const id = await createFood(db, yogurt);
+  await updateFood(db, id, { ...yogurt, name: ' Skyr ', kcal: 120, servingGrams: null });
+  assert.deepEqual(await getFood(db, id), { id, name: 'Skyr', kcal: 120, protein: 10, carbs: 12, fat: 5, servingGrams: null });
+  await assert.rejects(updateFood(db, id, { ...yogurt, protein: NaN }), ValidationError);
+  assert.equal((await getFood(db, id))?.kcal, 120);
+});
+
+test('editing or deleting a Food never changes a past Date', async () => {
+  const db = await openTestDb();
+  const id = await createFood(db, yogurt);
+  await addEntry(db, { date: '2026-11-12', meal: 'lunch', foodId: id, amount: 1, unit: 'serving' });
+  await updateFood(db, id, { ...yogurt, name: 'Skyr', kcal: 999 });
+  let past = await getFoodLog(db, '2026-11-12');
+  assert.deepEqual([past.meals[1].entries[0].name, past.totals.kcal], ['Greek yogurt', 150]);
+
+  await deleteFood(db, id);
+  assert.equal(await getFood(db, id), null);
+  past = await getFoodLog(db, '2026-11-12');
+  assert.deepEqual([past.meals[1].entries[0].name, past.totals.kcal], ['Greek yogurt', 150]);
 });
 
 test('the Food log groups Entries into the four Meals with per-Meal and Date totals', async () => {
