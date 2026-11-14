@@ -39,6 +39,7 @@ export default function FoodFormScreen() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const editing = !!params.foodId;
+  const [loaded, setLoaded] = useState(!editing); // nothing to save or delete until the Food is read
 
   useEffect(() => {
     if (!params.foodId) return;
@@ -46,8 +47,9 @@ export default function FoodFormScreen() {
       .then((f) => {
         if (!f) return setError('This food no longer exists.');
         setName(f.name);
-        const text = (v: number | null) => (v === null ? '' : String(v));
-        setText({ kcal: text(f.kcal), protein: text(f.protein), carbs: text(f.carbs), fat: text(f.fat), servingGrams: text(f.servingGrams) });
+        const toText = (v: number | null) => (v === null ? '' : String(v));
+        setText({ kcal: toText(f.kcal), protein: toText(f.protein), carbs: toText(f.carbs), fat: toText(f.fat), servingGrams: toText(f.servingGrams) });
+        setLoaded(true);
       })
       .catch(() => setError('Could not load this food.'));
   }, [db, params.foodId]);
@@ -125,9 +127,9 @@ export default function FoodFormScreen() {
       {error ? <InlineError>{error}</InlineError> : null}
       <View style={styles.buttonRow}>
         <Button label="Cancel" onPress={() => router.back()} style={{ flex: 1 }} />
-        <Button label="Save" variant="primary" onPress={save} disabled={saving} style={{ flex: 1 }} />
+        <Button label="Save" variant="primary" onPress={save} disabled={saving || !loaded} style={{ flex: 1 }} />
       </View>
-      {editing ? (
+      {editing && loaded ? (
         <Button label="Delete food" icon="trash-outline" variant="link" style={{ alignItems: 'flex-start' }} onPress={remove} />
       ) : null}
     </KeyboardAwareScroll>
