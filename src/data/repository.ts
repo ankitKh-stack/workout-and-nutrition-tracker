@@ -1338,7 +1338,8 @@ export async function saveTargets(db: SQLiteDatabase, targets: Targets): Promise
 
 /** A Food's nutrition is per Serving; servingGrams is the Serving's weight when known. */
 export type Food = { id: string; name: string; servingGrams: number | null } & Numbers;
-export type FoodInput = Omit<Food, 'id'>;
+/** A barcode, when given, is kept so the Food is found by it later (it is unique in My foods). */
+export type FoodInput = Omit<Food, 'id'> & { barcode?: string | null };
 
 const FOOD_COLUMNS = 'id, name, kcal, protein, carbs, fat, serving_grams AS servingGrams';
 
@@ -1357,9 +1358,9 @@ export async function createFood(db: SQLiteDatabase, f: FoodInput): Promise<stri
   const id = randomUUID();
   const t = now();
   await db.runAsync(
-    `INSERT INTO food (id, name, kcal, protein, carbs, fat, serving_grams, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    id, f.name.trim(), f.kcal, f.protein, f.carbs, f.fat, f.servingGrams, t, t,
+    `INSERT INTO food (id, name, kcal, protein, carbs, fat, serving_grams, barcode, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    id, f.name.trim(), f.kcal, f.protein, f.carbs, f.fat, f.servingGrams, f.barcode ?? null, t, t,
   );
   return id;
 }
@@ -1374,6 +1375,10 @@ export async function listFoods(db: SQLiteDatabase, filter: string): Promise<Foo
 
 export async function getFood(db: SQLiteDatabase, foodId: string): Promise<Food | null> {
   return db.getFirstAsync<Food>(`SELECT ${FOOD_COLUMNS} FROM food WHERE id = ?`, foodId);
+}
+
+export async function findFoodByBarcode(db: SQLiteDatabase, barcode: string): Promise<Food | null> {
+  return db.getFirstAsync<Food>(`SELECT ${FOOD_COLUMNS} FROM food WHERE barcode = ?`, barcode);
 }
 
 // ---------------------------------------------------------------------------
@@ -1395,6 +1400,14 @@ export async function addEntry(db: SQLiteDatabase, e: NewEntry): Promise<string>
     id, e.date, e.meal, food.id, food.name, food.kcal, food.protein, food.carbs, food.fat, food.servingGrams, e.amount, e.unit, now(),
   );
   return id;
+}
+
+/** Saves a new Food to My foods and logs it in one go (an Open Food Facts pick); a failed Entry leaves no Food behind. */
+export async function addEntryWithNewFood(db: SQLiteDatabase, f: FoodInput, e: Omit<NewEntry, 'foodId'>): Promise<void> {
+  await db.withTransactionAsync(async () => {
+    const foodId = await createFood(db, f);
+    await addEntry(db, { ...e, foodId });
+  });
 }
 
 /** An Entry as logged: the Food's name and per-Serving numbers copied at the time, plus the amount eaten. */

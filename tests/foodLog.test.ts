@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { addEntry, createFood, deleteEntry, getEntry, getFoodLog, getTargets, listFoods, saveTargets, updateEntry, ValidationError } from '../src/data/repository.ts';
+import { addEntry, addEntryWithNewFood, createFood, deleteEntry, findFoodByBarcode, getEntry, getFoodLog, getTargets, listFoods, saveTargets, updateEntry, ValidationError } from '../src/data/repository.ts';
 import { initializeDatabase, SCHEMA_VERSION } from '../src/data/schema.ts';
 import { localDateString } from '../src/lib/format.ts';
 import { openTestDb, tick } from './testDb.ts';
@@ -26,6 +26,25 @@ test('a Food needs a name, all four numbers ≥ 0 and a Serving weight above 0 w
   await assert.rejects(createFood(db, { ...yogurt, fat: -1 }), ValidationError);
   await assert.rejects(createFood(db, { ...yogurt, servingGrams: 0 }), ValidationError);
   assert.deepEqual(await listFoods(db, ''), []);
+});
+
+test('a Food saved with a barcode is found by it; a Food without one is not', async () => {
+  const db = await openTestDb();
+  const id = await createFood(db, { ...yogurt, barcode: '20416690' });
+  await createFood(db, { ...yogurt, name: 'Homemade yogurt' });
+  assert.equal((await findFoodByBarcode(db, '20416690'))?.id, id);
+  assert.equal(await findFoodByBarcode(db, '999'), null);
+});
+
+test('an Entry from a new Food saves the Food to My foods; a failed Entry saves neither', async () => {
+  const db = await openTestDb();
+  const entry = { date: '2026-11-13', meal: 'breakfast' as const, amount: 2, unit: 'serving' as const };
+  await addEntryWithNewFood(db, { ...yogurt, barcode: '20416690' }, entry);
+  assert.equal((await findFoodByBarcode(db, '20416690'))?.name, 'Greek yogurt');
+  assert.equal((await getFoodLog(db, '2026-11-13')).totals.kcal, 300);
+
+  await assert.rejects(addEntryWithNewFood(db, { ...yogurt, name: 'Skyr', barcode: '42' }, { ...entry, amount: 0 }), ValidationError);
+  assert.equal(await findFoodByBarcode(db, '42'), null);
 });
 
 test('the Food log groups Entries into the four Meals with per-Meal and Date totals', async () => {
