@@ -20,12 +20,20 @@ type Key = (typeof NUMBERS)[number]['key'];
 
 // Create a food (SPEC.md 3.9): name and per-Serving numbers, saved to My foods,
 // then straight on to the amount step for the Meal it was opened from.
+// An Open Food Facts result with gaps opens here prefilled, its gaps marked.
 export default function FoodFormScreen() {
   const db = useSQLiteContext();
   const { styles } = useTheme();
-  const params = useLocalSearchParams<{ date: string; meal: string; name?: string }>();
+  const params = useLocalSearchParams<{ date: string; meal: string; name?: string; barcode?: string; missing?: string } & Partial<Record<Key, string>>>();
   const [name, setName] = useState(params.name ?? '');
-  const [text, setText] = useState<Record<Key, string>>({ kcal: '', protein: '', carbs: '', fat: '', servingGrams: '' });
+  const [text, setText] = useState<Record<Key, string>>({
+    kcal: params.kcal ?? '',
+    protein: params.protein ?? '',
+    carbs: params.carbs ?? '',
+    fat: params.fat ?? '',
+    servingGrams: params.servingGrams ?? '',
+  });
+  const gaps = params.missing ? params.missing.split(',') : [];
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -40,7 +48,7 @@ export default function FoodFormScreen() {
     }
     setSaving(true);
     try {
-      const foodId = await createFood(db, { name, ...(values as Omit<FoodInput, 'name'>) });
+      const foodId = await createFood(db, { name, ...(values as Omit<FoodInput, 'name'>), barcode: params.barcode || null });
       router.replace({ pathname: '/food-amount', params: { date: params.date, meal: params.meal, foodId } });
     } catch (e) {
       setError(e instanceof ValidationError ? e.message : 'Could not save. Try again.');
@@ -63,9 +71,11 @@ export default function FoodFormScreen() {
           placeholder="e.g. Greek yogurt"
           autoFocus={!name}
           maxLength={80}
+          invalid={gaps.includes('name') && !name.trim()}
           accessibilityLabel="Name"
         />
       </View>
+      {gaps.length ? <Text style={styles.muted}>Open Food Facts is missing the marked fields. Fill them in to save.</Text> : null}
       <Text style={styles.muted}>Per Serving:</Text>
       {NUMBERS.map(({ key, label }) => (
         <View key={key} style={{ gap: 4 }}>
@@ -74,6 +84,7 @@ export default function FoodFormScreen() {
             value={text[key]}
             onChangeText={(t) => edit(() => setText((prev) => ({ ...prev, [key]: t })))}
             keyboardType="decimal-pad"
+            invalid={gaps.includes(key) && !text[key].trim()}
             accessibilityLabel={label}
           />
         </View>

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 
 import { Button, Field, InlineError, Segmented } from '@/components/ui';
-import { addEntry, deleteEntry, getEntry, getFood, updateEntry, ValidationError, type Entry, type Food } from '@/data/repository';
+import { addEntry, createFood, deleteEntry, getEntry, getFood, updateEntry, ValidationError, type Entry, type Food, type FoodInput } from '@/data/repository';
 import { entryNumbers, type AmountUnit, type Meal } from '@/domain/nutrition';
 import { confirmAsync } from '@/lib/dialogs';
 import { parseWeight, whole } from '@/lib/format';
@@ -13,10 +13,11 @@ import { useTheme } from '@/theme/settings';
 // The amount step (SPEC.md 3.9): Servings by default, grams when the Food has a
 // Serving weight, with a live preview of kcal and Macros before adding.
 // With an entryId it edits that Entry instead, using the numbers the Entry was logged with.
+// With a draft (a complete Open Food Facts result) the Food is saved to My foods only on Add.
 export default function FoodAmountScreen() {
   const db = useSQLiteContext();
   const { styles } = useTheme();
-  const { date, meal, foodId, entryId } = useLocalSearchParams<{ date: string; meal: Meal; foodId?: string; entryId?: string }>();
+  const { date, meal, foodId, entryId, draft } = useLocalSearchParams<{ date: string; meal: Meal; foodId?: string; entryId?: string; draft?: string }>();
   const [food, setFood] = useState<Food | Entry | null>(null);
   const [unit, setUnit] = useState<AmountUnit>('serving');
   const [text, setText] = useState('1');
@@ -33,12 +34,14 @@ export default function FoodAmountScreen() {
           setText(String(e.amount));
         })
         .catch(() => setError('Could not load this entry.'));
+    } else if (draft) {
+      setFood({ id: '', ...(JSON.parse(draft) as FoodInput) });
     } else {
       getFood(db, foodId!)
         .then((f) => (f ? setFood(f) : setError('This food no longer exists.')))
         .catch(() => setError('Could not load this food.'));
     }
-  }, [db, foodId, entryId]);
+  }, [db, foodId, entryId, draft]);
 
   const parsed = parseWeight(text);
   const amount = parsed.ok && parsed.value !== null && parsed.value > 0 ? parsed.value : null;
@@ -52,6 +55,14 @@ export default function FoodAmountScreen() {
       if (entryId) {
         await updateEntry(db, entryId, amount, unit);
         router.back();
+      } else if (draft) {
+        const { name, kcal, protein, carbs, fat, servingGrams, barcode } = JSON.parse(draft) as FoodInput;
+        // One transaction, so a failed Entry leaves no half-saved Food behind.
+        await db.withTransactionAsync(async () => {
+          const id = await createFood(db, { name, kcal, protein, carbs, fat, servingGrams, barcode });
+          await addEntry(db, { date, meal, foodId: id, amount, unit });
+        });
+        router.dismissAll();
       } else {
         await addEntry(db, { date, meal, foodId: foodId!, amount, unit });
         router.dismissAll();
