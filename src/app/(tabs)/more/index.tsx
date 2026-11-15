@@ -1,8 +1,10 @@
 import { router } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useRef, useState } from 'react';
-import { Platform, ScrollView, Text, View } from 'react-native';
+import { Platform, Text, View } from 'react-native';
 
+import { KeyboardAwareScroll } from '@/components/KeyboardAwareScroll';
+import { TargetsCard } from '@/components/TargetsCard';
 import { Button, Chevron, InlineError, ListRow, PageHeader, Segmented } from '@/components/ui';
 import { getDataSummary } from '@/data/repository';
 import { formatClock, MAX_REST_SECONDS, MIN_REST_SECONDS, stepRest } from '@/domain/restTimer';
@@ -13,7 +15,7 @@ import { useRestTimer } from '@/lib/restTimer';
 import { useFocusData } from '@/lib/useFocusData';
 import { useSettings, useTheme } from '@/theme/settings';
 
-// More: the link to History (3.12), settings for theme and weight unit (both
+// More: the link to History (3.12), daily nutrition Targets, settings for theme and weight unit (both
 // apply immediately and are saved), and what is stored on this phone.
 export default function MoreScreen() {
   const db = useSQLiteContext();
@@ -84,13 +86,16 @@ export default function MoreScreen() {
   return (
     <View style={styles.screen}>
       <PageHeader title="More" subtitle="History, settings and your data" />
-      <ScrollView contentContainerStyle={styles.content}>
+      <KeyboardAwareScroll contentContainerStyle={styles.content}>
         <ListRow
           title="History"
           subtitle="Your recent workouts"
           right={<Chevron />}
           onPress={() => router.push('/more/history')}
         />
+        <Text style={styles.sectionTitle}>Targets</Text>
+        <TargetsCard />
+
         <Text style={styles.sectionTitle}>Appearance</Text>
         <View style={styles.card}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -191,7 +196,7 @@ export default function MoreScreen() {
             </>
           )}
         </View>
-      </ScrollView>
+      </KeyboardAwareScroll>
     </View>
   );
 }

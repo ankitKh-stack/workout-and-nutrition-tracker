@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { addEntry, createFood, deleteEntry, getEntry, getFoodLog, listFoods, updateEntry, ValidationError } from '../src/data/repository.ts';
+import { addEntry, createFood, deleteEntry, getEntry, getFoodLog, getTargets, listFoods, saveTargets, updateEntry, ValidationError } from '../src/data/repository.ts';
 import { initializeDatabase, SCHEMA_VERSION } from '../src/data/schema.ts';
 import { localDateString } from '../src/lib/format.ts';
 import { openTestDb, tick } from './testDb.ts';
@@ -129,4 +129,21 @@ test('an edited amount must be above 0, in grams only with a Serving weight; a d
   const log = await getFoodLog(db, '2026-11-12');
   assert.deepEqual(log.meals[1].entries.map((e) => e.name), ['Apple']);
   assert.equal(log.totals.kcal, 80);
+});
+
+test('Targets save and reload, any of them blank, and clearing one removes it', async () => {
+  const db = await openTestDb();
+  assert.deepEqual(await getTargets(db), { kcal: null, protein: null, carbs: null, fat: null });
+  await saveTargets(db, { kcal: 2600, protein: 180, carbs: null, fat: 70.5 });
+  assert.deepEqual(await getTargets(db), { kcal: 2600, protein: 180, carbs: null, fat: 70.5 });
+  await saveTargets(db, { kcal: 2600, protein: null, carbs: null, fat: 70.5 });
+  assert.deepEqual(await getTargets(db), { kcal: 2600, protein: null, carbs: null, fat: 70.5 });
+});
+
+test('a Target must be a number above 0', async () => {
+  const db = await openTestDb();
+  const blank = { kcal: null, protein: null, carbs: null, fat: null };
+  await assert.rejects(saveTargets(db, { ...blank, kcal: 0 }), ValidationError);
+  await assert.rejects(saveTargets(db, { ...blank, fat: NaN }), ValidationError);
+  assert.deepEqual(await getTargets(db), blank);
 });

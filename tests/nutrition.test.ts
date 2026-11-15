@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { entryNumbers, sumNumbers } from '../src/domain/nutrition.ts';
+import { entryNumbers, sumNumbers, targetProgress } from '../src/domain/nutrition.ts';
 
 const yogurt = { kcal: 150, protein: 10, carbs: 12, fat: 5 };
 
@@ -22,4 +22,16 @@ test('totals add up every Entry, and nothing is zero', () => {
     carbs: 14,
     fat: 5.5,
   });
+});
+
+test('under a Target shows what is left and a part-filled bar', () => {
+  assert.deepEqual(targetProgress(1360, 2600), { eaten: 1360, target: 2600, left: 1240, over: 0, fraction: 1360 / 2600 });
+});
+
+test('going over a Target says how much over, and the bar stops at full', () => {
+  assert.deepEqual(targetProgress(2800, 2600), { eaten: 2800, target: 2600, left: 0, over: 200, fraction: 1 });
+});
+
+test('a blank Target has no progress', () => {
+  assert.equal(targetProgress(120, null), null);
 });
