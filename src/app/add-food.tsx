@@ -4,8 +4,9 @@ import { useState } from 'react';
 import { ActivityIndicator, ScrollView, Text, View } from 'react-native';
 
 import { Button, Chevron, EmptyText, Field, InlineError, ListRow } from '@/components/ui';
-import { findFoodByBarcode, listFoods } from '@/data/repository';
+import { listFoods } from '@/data/repository';
 import type { DraftFood } from '@/domain/openFoodFacts';
+import { draftRoute } from '@/lib/draftRoute';
 import { whole } from '@/lib/format';
 import { NOT_ANSWERING, OpenFoodFactsError, searchOpenFoodFacts } from '@/lib/openFoodFacts';
 import { useFocusData } from '@/lib/useFocusData';
@@ -18,7 +19,7 @@ type OnlineSearch =
 
 // Add food (SPEC.md 3.9): searches My foods as you type, offline. Picking a
 // Food opens the amount step; Create a food opens the food form. Open Food Facts
-// is searched only when its row is tapped (ADR 0001).
+// is searched only when its row is tapped (ADR 0001). The barcode button opens the scanner.
 export default function AddFoodScreen() {
   const db = useSQLiteContext();
   const { styles, colors } = useTheme();
@@ -40,31 +41,27 @@ export default function AddFoodScreen() {
   }
 
   async function pick(d: DraftFood) {
-    // A product already in My foods is logged from the user's own copy.
-    const mine = d.barcode ? await findFoodByBarcode(db, d.barcode).catch(() => null) : null;
-    if (mine) return router.push({ pathname: '/food-amount', params: { date, meal, foodId: mine.id } });
-    if (d.missing.length === 0) return router.push({ pathname: '/food-amount', params: { date, meal, draft: JSON.stringify(d) } });
-    const text = (v: number | null) => (v === null ? '' : String(v));
-    router.push({
-      pathname: '/food-form',
-      params: {
-        date,
-        meal,
-        name: d.name,
-        kcal: text(d.kcal),
-        protein: text(d.protein),
-        carbs: text(d.carbs),
-        fat: text(d.fat),
-        servingGrams: text(d.servingGrams),
-        barcode: d.barcode ?? '',
-        missing: d.missing.join(','),
-      },
-    });
+    router.push(await draftRoute(db, d, date, meal));
   }
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-      <Field value={query} onChangeText={setQuery} placeholder="Search My foods" autoFocus accessibilityLabel="Search My foods" />
+      <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+        <Field
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Search My foods"
+          autoFocus
+          accessibilityLabel="Search My foods"
+          style={{ flex: 1 }}
+        />
+        <Button
+          label=""
+          icon="barcode-outline"
+          accessibilityLabel="Scan a barcode"
+          onPress={() => router.push({ pathname: '/scan-food', params: { date, meal } })}
+        />
+      </View>
       <View style={{ gap: 8 }}>
         {foods?.map((f) => (
           <ListRow

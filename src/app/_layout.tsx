@@ -71,6 +71,7 @@ function ThemedApp() {
         <Stack.Screen name="intensifier" options={{ presentation: 'modal', title: 'Add intensifier' }} />
         <Stack.Screen name="swap-variation" options={{ presentation: 'modal', title: 'Swap variation' }} />
         <Stack.Screen name="add-food" options={{ presentation: 'modal', title: 'Add food' }} />
+        <Stack.Screen name="scan-food" options={{ presentation: 'modal', title: 'Scan a barcode' }} />
         <Stack.Screen name="food-form" options={{ presentation: 'modal', title: 'Create a food' }} />
         <Stack.Screen name="food-amount" options={{ presentation: 'modal', title: 'Amount' }} />
       </Stack>

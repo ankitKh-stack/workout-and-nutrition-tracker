@@ -56,17 +56,19 @@ export function Button({ label, onPress, variant = 'secondary', icon, disabled, 
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
         {icon ? <Ionicons name={icon} size={compact ? 16 : 18} color={textColor} /> : null}
-        <Text
-          style={[
-            styles.buttonText,
-            variant === 'primary' && styles.buttonTextPrimary,
-            variant === 'danger' && styles.buttonTextDanger,
-            variant === 'quiet' && { color: colors.muted, fontFamily: fonts.medium },
-            compact && { fontSize: 14 },
-          ]}
-        >
-          {label}
-        </Text>
+        {label ? (
+          <Text
+            style={[
+              styles.buttonText,
+              variant === 'primary' && styles.buttonTextPrimary,
+              variant === 'danger' && styles.buttonTextDanger,
+              variant === 'quiet' && { color: colors.muted, fontFamily: fonts.medium },
+              compact && { fontSize: 14 },
+            ]}
+          >
+            {label}
+          </Text>
+        ) : null}
       </View>
     </Pressable>
   );
