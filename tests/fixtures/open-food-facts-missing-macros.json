@@ -1,0 +1,11 @@
+{
+  "code": "4056489000000",
+  "product_name": "Orange Juice",
+  "brands": "",
+  "serving_quantity": 250,
+  "serving_quantity_unit": "ml",
+  "nutriments": {
+    "energy-kcal_100g": 45,
+    "proteins_100g": "0.7"
+  }
+}
