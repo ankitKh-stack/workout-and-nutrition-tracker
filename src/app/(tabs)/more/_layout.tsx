@@ -7,6 +7,7 @@ export default function MoreLayout() {
       <Stack.Screen name="index" options={{ headerShown: false, title: 'More' }} />
       <Stack.Screen name="history/index" options={{ title: 'History' }} />
       <Stack.Screen name="history/[workoutId]" options={{ title: '' }} />
+      <Stack.Screen name="foods" options={{ title: 'My foods' }} />
     </Stack>
   );
 }

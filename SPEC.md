@@ -402,6 +402,7 @@ These terms are used throughout the spec. They are defined for a reader who has 
 - **+** opens **Add food** for that Meal: a search box that filters My foods by name as you type (any case, offline), and **Create a food** at the bottom.
 - **Create a food:** name, then kcal, protein, carbs and fat per Serving (all required, 0 or more, up to 2 decimals) and an optional Serving weight in grams (above 0). The search text pre-fills the name. Saving puts the Food in My foods and opens the amount step.
 - **Search Open Food Facts for '…':** a row under the My foods matches once something is typed. The online search runs only when it is tapped, never per keystroke. Results show name and brand. A complete result opens the amount step, and **Add** saves it to My foods (with its barcode) and logs the Entry. Nutrition is per the product's serving size when it has one in grams, otherwise per a 100 g Serving. A result missing any number opens the food form prefilled, with the gaps marked; it can't be saved with blanks. A result whose barcode is already in My foods opens the user's own copy.
+- **My foods on More:** a row opens every saved Food A–Z with a name search. Tapping one opens the food form titled "Edit food": **Save** updates it, and a **Delete food** link asks for confirmation, then removes it. Editing or deleting a Food never changes past Dates.
 - **Amount step:** Servings by default (starting at 1); a Servings / Grams toggle when the Food has a Serving weight. A live line shows the kcal and Macros of the amount. **Add** logs the Entry into the Meal and returns to the Food log.
 
 **Rules:**
@@ -730,7 +731,7 @@ The prototype must not include the following. Each is excluded for the reason gi
 
 | Excluded | Reason |
 |---|---|
-| Nutrition beyond the Food log in 3.9 (Targets, other Dates, editing or deleting Entries, managing My foods, barcode scan) | Built in later steps of the [nutrition spec](docs/superpowers/specs/2026-11-13-nutrition-spec.md). |
+| Nutrition beyond the Food log in 3.9 (Targets, other Dates, editing or deleting Entries, barcode scan) | Built in later steps of the [nutrition spec](docs/superpowers/specs/2026-11-13-nutrition-spec.md). |
 | Backend services, servers, cloud sync or a built cloud backup | Data lives on the phone for the prototype; section 6 only describes where a backup would fit later. |
 | User accounts, login, sign-up, passwords | Not needed for on-device data and adds work that does not prove the workout loop. |
 | Billing, subscriptions, payments, ads | Not part of proving the prototype. |

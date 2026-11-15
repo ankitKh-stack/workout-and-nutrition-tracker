@@ -1365,6 +1365,20 @@ export async function createFood(db: SQLiteDatabase, f: FoodInput): Promise<stri
   return id;
 }
 
+/** Edits a Food in My foods; Entries keep the numbers they were logged with. The barcode stays as it was. */
+export async function updateFood(db: SQLiteDatabase, foodId: string, f: Omit<FoodInput, 'barcode'>): Promise<void> {
+  validateFood(f);
+  await db.runAsync(
+    'UPDATE food SET name = ?, kcal = ?, protein = ?, carbs = ?, fat = ?, serving_grams = ?, updated_at = ? WHERE id = ?',
+    f.name.trim(), f.kcal, f.protein, f.carbs, f.fat, f.servingGrams, now(), foodId,
+  );
+}
+
+/** Removes a Food from My foods; its past Entries stay, unlinked (ON DELETE SET NULL). */
+export async function deleteFood(db: SQLiteDatabase, foodId: string): Promise<void> {
+  await db.runAsync('DELETE FROM food WHERE id = ?', foodId);
+}
+
 /** My foods A–Z, keeping those whose name contains the filter (any case). */
 export async function listFoods(db: SQLiteDatabase, filter: string): Promise<Food[]> {
   return db.getAllAsync<Food>(
